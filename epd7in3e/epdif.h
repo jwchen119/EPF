@@ -12,7 +12,7 @@
 // EE02 board pin assignments for XIAO ESP32-S3 Plus
 // Source: Seeed_GFX User_Setups/EPaper_Board_Pins_Setups.h
 //         USE_XIAO_EPAPER_DISPLAY_BOARD_EE02 section
-#define BUSY_PIN  5   // GPIO5  — D3 on XIAO header
+#define BUSY_PIN  4   // GPIO4  — D3 on XIAO header (TFT_BUSY confirmed from Seeed_GFX EPaper_Board_Pins_Setups.h)
 #define RST_PIN   38  // GPIO38 — internal, wired on EE02 board (not on header)
 #define DC_PIN    10  // GPIO10 — Data/Command
 #define CS_PIN    44  // GPIO44 — primary chip-select (D7 mapping)

@@ -16,7 +16,7 @@
 #include <WiFi.h>
 
 /* Pin Layout — XIAO ESP32-S3 Plus on Seeed EE02 HAT
-   BUSY   <> GPIO5  (D3)
+   BUSY   <> GPIO4  (D3) — confirmed from Seeed_GFX EPaper_Board_Pins_Setups.h
    RST    <> GPIO38 (internal, wired by EE02 board)
    DC     <> GPIO10
    CS     <> GPIO44 (D7) + CS1 GPIO41
@@ -24,6 +24,8 @@
    MOSI   <> GPIO9  (HSPI, write-only)
    WAKEUP <> GPIO2  (D0, RTC-capable)
    CONFIG <> GPIO2  (sampled at boot only)
+   BAT_ADC <> GPIO1 (D0/A0) — BAT_ADC net via TPS22916 voltage divider
+   ADC_EN  <> GPIO6 (D5/A5) — ADC_EN net, gates TPS22916 load switch
 */
 
 Preferences preferences;
