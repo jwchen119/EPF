@@ -457,6 +457,32 @@
             </div>
 
             <div class="card">
+                <h2 class="card-title">Date Overlay</h2>
+                <div class="form-group">
+                    <label for="date_overlay_enabled">Show Photo Date:</label>
+                    <select id="date_overlay_enabled" name="date_overlay_enabled">
+                        <option value="off" {% if not config['immich'].get('date_overlay_enabled', false) %}selected{% endif %}>Off</option>
+                        <option value="on"  {% if config['immich'].get('date_overlay_enabled', false) %}selected{% endif %}>On</option>
+                    </select>
+                    <div class="small-text">Display the date the photo was taken on the image. Off by default.</div>
+                </div>
+                <div class="form-group">
+                    <label for="date_overlay_position">Overlay Position:</label>
+                    <select id="date_overlay_position" name="date_overlay_position">
+                        <option value="topLeft"      {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'topLeft' %}selected{% endif %}>Top Left</option>
+                        <option value="topCenter"    {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'topCenter' %}selected{% endif %}>Top Center</option>
+                        <option value="topRight"     {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'topRight' %}selected{% endif %}>Top Right</option>
+                        <option value="centerLeft"   {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'centerLeft' %}selected{% endif %}>Center Left</option>
+                        <option value="center"       {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'center' %}selected{% endif %}>Center</option>
+                        <option value="centerRight"  {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'centerRight' %}selected{% endif %}>Center Right</option>
+                        <option value="bottomLeft"   {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'bottomLeft' %}selected{% endif %}>Bottom Left</option>
+                        <option value="bottomCenter" {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'bottomCenter' %}selected{% endif %}>Bottom Center</option>
+                        <option value="bottomRight"  {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'bottomRight' %}selected{% endif %}>Bottom Right</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card">
                 <h2 class="card-title">Power Management</h2>
                 <div class="form-group">
                     <label for="sleep_time">Sleep Time Range:</label>

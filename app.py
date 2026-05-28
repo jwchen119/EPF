@@ -42,8 +42,106 @@ DEFAULT_CONFIG = {
         'sleep_end_hour': 6,            # Sleep end time 6:00 (6:00 AM)
         'sleep_end_minute': 0,          # Sleep end time 6:00 (6:00 AM)
         'wakeup_interval': 60,          # Default 60 minutes (1 hour)
+        'date_overlay_enabled': False,  # D-01: overlay off by default
+        'date_overlay_position': 'bottomRight',  # D-05: default position
     }
 }
+
+def parse_photo_date(raw_str):
+    """Return 'DD.MM.YYYY' string from a date input, or None if unparseable.
+
+    Accepts:
+      - EXIF format: 'YYYY:MM:DD HH:MM:SS'   (PIL exif tag 36867)
+      - ISO 8601:   'YYYY-MM-DDTHH:MM:SS.sssZ' or 'YYYY-MM-DD...'  (Immich exifInfo.dateTimeOriginal)
+    Returns None for None, empty string, or unparseable input.
+    """
+    if not raw_str or not isinstance(raw_str, str) or len(raw_str) < 10:
+        return None
+    # EXIF format: separator is ':' at index 4
+    if raw_str[4] == ':':
+        try:
+            return datetime.strptime(raw_str[:10], "%Y:%m:%d").strftime("%d.%m.%Y")
+        except ValueError:
+            return None
+    # ISO 8601: separator is '-' at index 4
+    if raw_str[4] == '-':
+        try:
+            return datetime.strptime(raw_str[:10], "%Y-%m-%d").strftime("%d.%m.%Y")
+        except ValueError:
+            return None
+    return None
+
+
+# 9-position anchor lookup for date overlay (DO-04).
+# Each lambda returns (x, y) of the text's top-left given image w/h, text bbox w/h, and padding.
+POSITIONS = {
+    "topLeft":      lambda w, h, tw, th, p: (p, p),
+    "topCenter":    lambda w, h, tw, th, p: ((w - tw) // 2, p),
+    "topRight":     lambda w, h, tw, th, p: (w - tw - p, p),
+    "centerLeft":   lambda w, h, tw, th, p: (p, (h - th) // 2),
+    "center":       lambda w, h, tw, th, p: ((w - tw) // 2, (h - th) // 2),
+    "centerRight":  lambda w, h, tw, th, p: (w - tw - p, (h - th) // 2),
+    "bottomLeft":   lambda w, h, tw, th, p: (p, h - th - p),
+    "bottomCenter": lambda w, h, tw, th, p: ((w - tw) // 2, h - th - p),
+    "bottomRight":  lambda w, h, tw, th, p: (w - tw - p, h - th - p),
+}
+
+
+def draw_date_overlay(output_img, text, font, position_str, padding=6, rotation=0):
+    """Draw white text on a solid black background rectangle at position_str.
+
+    Accounts for display rotation so that position_str refers to the viewer's
+    visual corner (e.g. 'bottomRight' always appears at the viewer's bottom-right
+    regardless of rotationAngle), and text is rendered upright from the viewer's
+    perspective.
+
+    Args:
+        output_img:   PIL.Image (RGB mode). Mutated in place.
+        text:         String to render (e.g. '05.01.2022').
+        font:         PIL ImageFont instance.
+        position_str: One of POSITIONS keys; unknown values fall back to 'bottomRight'.
+        padding:      Pixels of black background around the text on all sides.
+        rotation:     Display rotation angle in degrees (0, 90, 180, 270).
+                      Must match the rotationAngle used by load_scaled so that
+                      the overlay is placed correctly in viewer space.
+    """
+    bw, bh = output_img.size  # buffer dimensions (always 1200x1600)
+
+    # Viewer canvas dimensions depend on rotation: 90° and 270° CCW transpose W and H.
+    if rotation in (90, 270):
+        vw, vh = bh, bw  # viewer perceives a transposed (landscape) display
+    else:
+        vw, vh = bw, bh  # viewer perceives same dimensions as buffer
+
+    # --- Step 1: measure text in viewer space ---
+    _probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    bbox = _probe.textbbox((0, 0), text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+
+    # --- Step 2: compute overlay position in viewer space ---
+    get_xy = POSITIONS.get(position_str, POSITIONS["bottomRight"])
+    x, y = get_xy(vw, vh, tw, th, padding)
+
+    # --- Step 3: draw upright text on a viewer-oriented RGBA canvas ---
+    viewer_canvas = Image.new("RGBA", (vw, vh), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(viewer_canvas)
+    rect = [x - padding, y - padding, x + tw + padding, y + th + padding]
+    draw.rectangle(rect, fill=(0, 0, 0, 255))
+    draw.text((x - bbox[0], y - bbox[1]), text, fill=(255, 255, 255, 255), font=font)
+
+    # --- Step 4: rotate viewer canvas into buffer orientation ---
+    # load_scaled rotated the image content by `rotation`° CCW; apply the same
+    # rotation to the overlay canvas so it lands in the matching buffer location.
+    if rotation != 0:
+        viewer_canvas = viewer_canvas.rotate(rotation, expand=True)
+
+    # --- Step 5: paste overlay onto output_img using alpha mask ---
+    # viewer_canvas is now buffer-sized; paste only where alpha > 0.
+    overlay_rgb = viewer_canvas.convert("RGB")
+    mask = viewer_canvas.split()[3]  # alpha channel as mask
+    output_img.paste(overlay_rgb, mask=mask)
+
 
 current_config = DEFAULT_CONFIG.copy()
 
@@ -60,6 +158,8 @@ sleep_start_hour = DEFAULT_CONFIG['immich']['sleep_start_hour']
 sleep_start_minute = DEFAULT_CONFIG['immich']['sleep_start_minute']
 sleep_end_hour = DEFAULT_CONFIG['immich']['sleep_end_hour']
 sleep_end_minute = DEFAULT_CONFIG['immich']['sleep_end_minute']
+date_overlay_enabled = DEFAULT_CONFIG['immich']['date_overlay_enabled']
+date_overlay_position = DEFAULT_CONFIG['immich']['date_overlay_position']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
@@ -177,7 +277,7 @@ def depalette_image(pixels, palette):
     indices = np.argmin(diffs, axis=2)
     return indices
 
-def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(255, 255, 255)):
+def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(255, 255, 255), immich_date_raw=None):
     """
     Process image in memory, return BytesIO object
 
@@ -185,26 +285,21 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
     :param target_width: width of epaper
     :param target_height: height of epaper
     :param bg_color: background color
-    :param rotation: rotation angle (0, 90, 180, 270)
+    :param immich_date_raw: raw date string from Immich exifInfo.dateTimeOriginal (ISO 8601), or None
     :return: BytesIO object
     """
 
     # Update the angle
     rotation = rotationAngle
 
-    # Get data from EXIF
+    # Extract EXIF date from local image as fallback (DO-01 local path)
+    date_time_raw = None
     try:
         exif = image._getexif()
         if exif:
-            # EXIF time tag is 36867
-            date_time = exif.get(36867)
-            if not date_time:
-                # Alternative time tag is 306
-                date_time = exif.get(306)
-        else:
-            date_time = None
-    except:
-        date_time = None
+            date_time_raw = exif.get(36867) or exif.get(306)
+    except (AttributeError, Exception):
+        date_time_raw = None
 
     # Read correct photo orientation from EXIF
     image = ImageOps.exif_transpose(image)
@@ -217,7 +312,7 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
     # Enhance color and contrast
     enhanced_img = ImageEnhance.Color(img).enhance(img_enhanced)
     enhanced_img = ImageEnhance.Contrast(enhanced_img).enhance(img_contrast)
-    
+
     # Palette definition (Seeed T133A01 color primaries)
     palette = [
         0, 0, 0,           # Black
@@ -227,7 +322,7 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
         0, 76, 255,        # Blue (Seeed)
         29, 185, 84,       # Green (Seeed)
     ]
-    
+
     # Prepare palette image (similar to previous code)
     e = len(palette)
     assert e > 0, "Palette unexpectedly short"
@@ -236,127 +331,32 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
 
     # Create temporary palette image
     pal_image = Image.new("P", (1, 1))
-    
+
     # Zero-pad palette to 768 values
     palette += (768 - e) * [0]
     pal_image.putpalette(palette)
-    
+
     # Quantize image
     # output_img = enhanced_img.convert("RGB").quantize(
     #     palette=pal_image,
     #     dither=Image.Dither.FLOYDSTEINBERG
     # ).convert("RGB")
-    
+
     output_img = convert_image(enhanced_img, dithering_strength=strength)
     output_img = Image.fromarray(output_img, mode="RGB")
-    
-    # output_img.paste(quantized_img, (paste_x, paste_y))
-    
-    # Add date if available
-    if date_time:
-        draw = ImageDraw.Draw(output_img)
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
-        except:
-            font = ImageFont.load_default()
-        
-        # Format the date
-        try:
-            try:
-                dt = datetime.strptime(date_time, "%Y:%m:%d %H:%M:%S")
-                formatted_time = dt.strftime("%Y/%m/%d")
-            except ValueError:
-                dt = datetime.strptime(date_time, "%Y.%m.%d")
-                formatted_time = dt.strftime("%Y/%m/%d")
-        except:
-            formatted_time = date_time
 
-        def draw_text_with_background(draw, text, font, text_color=(255, 255, 255), bg_color=(0, 0, 0)):
-            # Calculate rotated width/height
-            if rotation in [90, 270]:
-                img_width, img_height = target_height, target_width  # width and height swapped
-            else:
-                img_width, img_height = target_width, target_height
-        
-            # Set text position
-            if rotation == 0:  # no rotation
-                position = (img_width - 200, img_height - 40)
-            elif rotation == 90:  # 90 degrees clockwise (actually counterclockwise)
-                position = (img_height - 30, 30)
-            elif rotation == 180:  # 180 degrees
-                position = (img_width -200 , img_height - 40)
-            elif rotation == 270:  # 270 degrees clockwise (actually counterclockwise)
-                position = (30, img_width - 30)
-        
-            # Get text bounding box
-            text_bbox = draw.textbbox((0, 0), text, font=font)  # use (0, 0) to get text size
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-            padding = 5
-        
-            # Set text position and background rectangle bounds
-            if rotation == 0:  # no rotation, bottom right
-                position = (img_width - text_width - 40, img_height - text_height - 40)
-                rect_coords = [
-                    position[0] - padding,  # Top left X
-                    position[1] - padding,  # Top left Y
-                    position[0] + text_width + padding,  # Bottom right X
-                    position[1] + text_height + padding  # Bottom right Y
-                ]
-            elif rotation == 90:  # 90 degrees, top right
-                position = (img_height - text_height - 40, 40)
-                rect_coords = [
-                    position[0] - padding,  # Top left X
-                    position[1] - padding,  # Top left Y
-                    position[0] + text_height + padding,  # Bottom right X
-                    position[1] + text_width + padding   # Bottom right Y
-                ]
-            elif rotation == 180:  # 180 degrees, top left
-                position = (40, 40)
-                rect_coords = [
-                    position[0] - padding,  # Top left X
-                    position[1] - padding,  # Top left Y
-                    position[0] + text_width + padding,  # Bottom right X
-                    position[1] + text_height + padding  # Bottom right Y
-                ]
-            elif rotation == 270:  # 270 degrees, bottom left
-                position = (40, img_width - text_width - 40)
-                rect_coords = [
-                    position[0] - padding,  # Top left X
-                    position[1] - padding,  # Top left Y
-                    position[0] + text_height + padding,  # Bottom right X
-                    position[1] + text_width + padding   # Bottom right Y
-                ]
-            
-            # Draw rectangular background
-            draw.rectangle(rect_coords, fill=bg_color)
-        
-            # Create text based on the rotation of image
-            if rotation == 0:
-                draw.text(position, text, fill=text_color, font=font)
-            else:
-                # Create a new image to draw rotated text
-                rotated_text = Image.new("RGB", (text_width, text_height), (255, 255, 255))  # white background
-                rotated_draw = ImageDraw.Draw(rotated_text)
-                rotated_draw.text((0, 0), text, fill=text_color, font=font)
-                
-                # Rotate text image
-                rotated_text = rotated_text.rotate(rotation, expand=True, resample=Image.BICUBIC)
-                
-                # Calculate where rotated text should be pasted
-                if rotation == 90:
-                    # 90 degree rotation, display in top right
-                    output_img.paste(rotated_text, (position[1], position[0]))
-                elif rotation == 180:
-                    # 180 degree rotation, display in top left
-                    output_img.paste(rotated_text, (position[0], position[1]))
-                elif rotation == 270:
-                    # 270 degree rotation, display in bottom left
-                    output_img.paste(rotated_text, (position[1], position[0]))
-                
-        # Drawing the text on forground (WIP)
-        # draw_text_with_background(draw, formatted_time, font)
-    
+    # Date overlay (DO-01 + DO-02 + DO-03 + DO-04). Off by default (D-01); silently hidden when no date (D-03).
+    if date_overlay_enabled:
+        date_str = parse_photo_date(immich_date_raw) or parse_photo_date(date_time_raw)
+        if date_str:
+            try:
+                font = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 26)
+            except (IOError, OSError):
+                font = ImageFont.load_default()
+            draw_date_overlay(output_img, date_str, font, date_overlay_position,
+                              padding=6, rotation=rotation)
+
     # Save image into ram
     img_io = io.BytesIO()
     output_img.save(img_io, 'BMP')
@@ -472,7 +472,7 @@ class ConfigFileHandler(FileSystemEventHandler):
     
 def update_app_config(new_config):
     """ Update global configuration and Flask application configuration """
-    global current_config, url, albumname, rotationAngle, img_enhanced, img_contrast, strength, display_mode, image_order, sleep_start_hour, sleep_end_hour, sleep_start_minute, sleep_end_minute
+    global current_config, url, albumname, rotationAngle, img_enhanced, img_contrast, strength, display_mode, image_order, sleep_start_hour, sleep_end_hour, sleep_start_minute, sleep_end_minute, date_overlay_enabled, date_overlay_position
     
     current_config = new_config
     
@@ -504,7 +504,9 @@ def update_app_config(new_config):
     sleep_end_hour = new_config['immich']['sleep_end_hour']
     sleep_start_minute = new_config['immich']['sleep_start_minute']
     sleep_end_minute = new_config['immich']['sleep_end_minute']
-    
+    date_overlay_enabled = new_config['immich'].get('date_overlay_enabled', False)
+    date_overlay_position = new_config['immich'].get('date_overlay_position', 'bottomRight')
+
     print(f"Configuration updated: URL = {url}, Album = {albumname}, angle = {rotationAngle}, enhance = {img_enhanced}, contrast = {img_contrast}, strength = {strength}, display_mode = {display_mode}, image_order = {image_order}")
 
 def start_config_watcher(config_path):
@@ -601,6 +603,8 @@ def settings():
                 'sleep_end_hour': int(request.form.get('sleep_end_hour', current_config['immich']['sleep_end_hour'])),
                 'sleep_end_minute': int(request.form.get('sleep_end_minute', current_config['immich']['sleep_end_minute'])),
                 'wakeup_interval': int(request.form.get('wakeup_interval', current_config['immich']['wakeup_interval'])),
+                'date_overlay_enabled': request.form.get('date_overlay_enabled', 'off') == 'on',
+                'date_overlay_position': request.form.get('date_overlay_position', 'bottomRight'),
             }
         }
         
@@ -789,7 +793,8 @@ def serve_immich_image():
     else:
         image = Image.open(image_data)
 
-    processed_image = scale_img_in_memory(image)
+    immich_date_raw = selected_image.get('exifInfo', {}).get('dateTimeOriginal')
+    processed_image = scale_img_in_memory(image, immich_date_raw=immich_date_raw)
     processed_image.seek(0)
     c_code = convert_to_c_code_in_memory(Image.open(processed_image))
 
