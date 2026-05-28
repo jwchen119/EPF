@@ -1,0 +1,23 @@
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+extend-exclude = ["cpy.pyx", "cpy.c", "tests/conftest.py", ".claude"]
+
+[tool.ruff.lint]
+# D-04: sensible Flask/Py3.9 default — E (pycodestyle errors), W (warnings),
+# F (pyflakes), I (isort), N (pep8-naming).
+select = ["E", "W", "F", "I", "N"]
+ignore = ["E501"]  # line-length handled by formatter
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.pyright]
+# D-01: basic mode (not strict) — 900-line app.py should not require exhaustive annotations.
+# D-02: cpy.pyx excluded — pyright cannot type-check Cython.
+typeCheckingMode = "basic"
+pythonVersion = "3.9"
+include = ["app.py", "cpy_fallback.py"]
+exclude = ["cpy.pyx", "cpy.c", "**/__pycache__", "tests/conftest.py"]
+reportMissingImports = "warning"

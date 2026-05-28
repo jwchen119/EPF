@@ -2,22 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-last_updated: "2026-05-27T20:21:30.901Z"
+status: Phase complete — ready for verification
+last_updated: "2026-05-28T05:21:26.122Z"
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 9
+  completed_plans: 9
 ---
 
 # Project State
 
 ## Current Position
 
-**Active Phase:** 02 — date-overlay
-**Status:** Milestone complete
-**Plans:** 3 total, 3 complete
+Phase: 03 (ci-cd) — COMPLETE
+Plan: 3 of 3 (all plans complete)
 
 ## Phase 1 Complete
 
@@ -45,3 +44,11 @@ Phase 01 (hardware-port) completed all 3 plans:
 - .get() fallback in update_app_config for date_overlay keys (backward compat with old config.yaml) (02-03)
 - date_overlay_enabled uses select on/off not checkbox to avoid unchecked-field omission in HTML POST (02-03)
 - Dead draw_text_with_background nested function removed (-125 lines); EXIF fallback kept as date_time_raw (02-03)
+- N816 noqa on rotationAngle global — rename would touch 7 call-sites with no behavior gain (03-01)
+- .claude added to ruff extend-exclude to prevent scanning git worktrees (03-01)
+- pyright basic mode required 0 code changes — all 13 diagnostics are missing-import warnings for third-party stubs (03-01)
+- lint job installs only ruff (not full dev deps) for faster CI; test job installs libraw-dev + fonts-dejavu-core system libs matching Dockerfile (03-02)
+- No needs: between CI jobs — parallel execution; branch protection enforces all-pass gate (03-02)
+- semver validated via bash regex ^[0-9]+\.[0-9]+\.[0-9]+$ before checkout; tag-already-exists guard prevents silent overwrites (03-03)
+- ${GITHUB_REPOSITORY,,} bash lowercase for ghcr.io image name; version+latest pushed atomically in single build-push-action step (03-03)
+- fetch-depth: 0 required for generate_release_notes to diff against previous tag; GITHUB_TOKEN only — no extra secrets (03-03)
