@@ -23,8 +23,8 @@
 #define WAKEUP_PIN GPIO_NUM_2                 // GPIO 2 for wake up
 #define WAKEUP_LEVEL ESP_GPIO_WAKEUP_GPIO_LOW // Wake up on low level
 
-// Buffer configuration
-#define BUFFER_SIZE 131072U // Buffer size for image processing
+// HTTP chunk size for streaming reads (frame buffer is allocated in PSRAM)
+#define HTTP_CHUNK_SIZE 16384U  // HTTP read chunk size (frame buffer is in PSRAM)
 
 #define SERVER_BASE_URL "http://server.ip:15001"
 #define PREFERENCES_SLEEP_TIME_KEY "refresh_rate"

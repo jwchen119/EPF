@@ -13,9 +13,16 @@ from datetime import datetime, timedelta
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import threading
-from cpy import  convert_image, load_scaled
+from dotenv import load_dotenv
+try:
+    from cpy import convert_image, load_scaled
+except ImportError as exc:
+    from cpy_fallback import convert_image, load_scaled
+    print(f"Using pure Python image processing fallback: {exc}")
 import ntplib
 import time
+
+load_dotenv()  # Load environment variables from .env file
 
 app = Flask(__name__)
 
@@ -56,11 +63,15 @@ sleep_end_minute = DEFAULT_CONFIG['immich']['sleep_end_minute']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
-photodir = os.getenv('IMMICH_PHOTO_DEST', '/photos')
+base_dir = os.path.dirname(os.path.abspath(__file__))
+photodir = os.getenv('IMMICH_PHOTO_DEST', os.path.join(base_dir, 'photos'))
 tracking_file = os.path.join(photodir, 'tracking.txt')
+localdir = os.getenv('LOCAL_PHOTO_DIR', os.path.join(base_dir, 'local_photos'))
+config_file = os.getenv('CONFIG_FILE', os.path.join(base_dir, 'config.yaml'))
 
 # Ensure directory exists
 os.makedirs(photodir, exist_ok=True)
+os.makedirs(localdir, exist_ok=True)
 
 # Ensure tracking.txt exists
 if not os.path.exists(tracking_file):
@@ -78,14 +89,15 @@ ALLOWED_EXTENSIONS = {'.jpeg', '.raw', '.jpg', '.bmp', '.dng', '.heic', '.arw', 
 os.makedirs(photodir, exist_ok=True)
 register_heif_opener()
 
-# Palltte only for WaveShare 7.5inch Spectra-E6 e-Paper
+# Seeed T133A01 color primaries (from Seeed_GFX dither.cpp kE6Rgb table)
+# Order: black, white, yellow, red, blue, green
 palette = [
-    (0, 0, 0),
-    (255, 255, 255),
-    (255, 243, 56),
-    (191, 0, 0),
-    (100, 64, 255),
-    (67, 138, 28)
+    (0, 0, 0),       # index 0 → T133A01 nibble 0xF (black)
+    (255, 255, 255),  # index 1 → T133A01 nibble 0x0 (white)
+    (255, 216, 0),    # index 2 → T133A01 nibble 0xB (yellow)
+    (229, 57, 53),    # index 3 → T133A01 nibble 0x6 (red)
+    (0, 76, 255),     # index 4 → T133A01 nibble 0xD (blue)
+    (29, 185, 84),    # index 5 → T133A01 nibble 0x2 (green)
 ]
 
 last_battery_voltage = 0
@@ -163,10 +175,9 @@ def depalette_image(pixels, palette):
     palette_array = np.array(palette)
     diffs = np.sqrt(np.sum((pixels[:, :, None, :] - palette_array[None, None, :, :]) ** 2, axis=3))
     indices = np.argmin(diffs, axis=2)
-    indices[indices > 3] += 1  # Simulate the code from the C
     return indices
 
-def scale_img_in_memory(image, target_width=800, target_height=480, bg_color=(255, 255, 255)):
+def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(255, 255, 255)):
     """
     Process image in memory, return BytesIO object
 
@@ -207,14 +218,14 @@ def scale_img_in_memory(image, target_width=800, target_height=480, bg_color=(25
     enhanced_img = ImageEnhance.Color(img).enhance(img_enhanced)
     enhanced_img = ImageEnhance.Contrast(enhanced_img).enhance(img_contrast)
     
-    # Palette definition (matching previous quantization logic)
+    # Palette definition (Seeed T133A01 color primaries)
     palette = [
-        0, 0, 0,         # Black
-        255, 255, 255,   # White
-        255, 255, 0,    # Yellow
-        255, 0, 0,       # Deep Red
-        0, 0, 255,    # Blue
-        0, 255, 0      # Green
+        0, 0, 0,           # Black
+        255, 255, 255,     # White
+        255, 216, 0,       # Yellow (Seeed)
+        229, 57, 53,       # Red (Seeed)
+        0, 76, 255,        # Blue (Seeed)
+        29, 185, 84,       # Green (Seeed)
     ]
     
     # Prepare palette image (similar to previous code)
@@ -353,36 +364,37 @@ def scale_img_in_memory(image, target_width=800, target_height=480, bg_color=(25
     return img_io
 
 def convert_to_c_code_in_memory(image_data):
-    """ Convert image to C code in memory """
-    # Convert image data to numpy array
+    """ Convert image to C code in memory — T133A01 nibble encoding """
     pixels = np.array(image_data)
-    
-    # Process palette
+
+    # Nearest-neighbor palette quantization
     indices = depalette_image(pixels, palette)
-    
-    # Compress pixels
+
+    # T133A01 nibble codes indexed by palette position:
+    # palette[0]=black→0xF, [1]=white→0x0, [2]=yellow→0xB,
+    # [3]=red→0x6, [4]=blue→0xD, [5]=green→0x2
+    nibble_map = [0xF, 0x0, 0xB, 0x6, 0xD, 0x2]
+
     height, width = indices.shape
     bytes_array = [
-        (indices[y, x] << 4) | indices[y, x + 1] if x + 1 < width else (indices[y, x] << 4)
+        (nibble_map[indices[y, x]] << 4) | nibble_map[indices[y, x + 1]]
+        if x + 1 < width
+        else (nibble_map[indices[y, x]] << 4)
         for y in range(height)
         for x in range(0, width, 2)
     ]
-    
-    # Generate C code
-    output = io.StringIO()
 
+    # Generate hex CSV output
+    output = io.StringIO()
     for i, byte_value in enumerate(bytes_array):
         output.write(f"{byte_value:02X},")
         if (i + 1) % 16 == 0:
             output.write("\n")
-    
     output.write("};\n")
-    
-    # Convert output to bytes
+
     result = output.getvalue().encode('utf-8')
     output_bytes = io.BytesIO(result)
     output_bytes.seek(0)
-    
     return output_bytes
 
 def convert_raw_or_dng_to_jpg(input_file_path, output_dir):
@@ -556,7 +568,6 @@ def calculate_battery_percentage(voltage):
 @app.route('/setting', methods=['GET', 'POST'])
 def settings():
     global current_config, last_battery_voltage, last_battery_update
-    config_path = '/config/config.yaml'
     
     # Use stored battery voltage (if updated within the last hour)
     current_time = time.time()
@@ -601,7 +612,7 @@ def settings():
         
         try:
             # Write to config file
-            with open(config_path, 'w') as file:
+            with open(config_file, 'w') as file:
                 yaml.safe_dump(new_config, file)
             
             # Update current configuration
@@ -647,14 +658,13 @@ def run_daily_ntp_sync():
             time.sleep(3600)  # Retry after 1 hour if error occurs
 
 def main():
-    config_path = '/config/config.yaml'
-    
+
     # Start configuration file monitoring
-    config_observer = start_config_watcher(config_path)
+    config_observer = start_config_watcher(config_file)
     
     try:
         # Initialize configuration
-        initial_config = ConfigFileHandler(config_path, update_app_config).config
+        initial_config = ConfigFileHandler(config_file, update_app_config).config
         update_app_config(initial_config)
         
         # Start daily NTP sync thread
@@ -667,11 +677,134 @@ def main():
         config_observer.stop()
     config_observer.join()
 
+def open_image_from_path(filepath):
+    """Open a local image file into a PIL Image, handling RAW/HEIC formats."""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in {'.raw', '.dng', '.arw', '.cr2', '.nef'}:
+        with rawpy.imread(filepath) as raw:
+            rgb = raw.postprocess(use_camera_wb=True, use_auto_wb=False)
+            return Image.fromarray(rgb)
+    elif ext == '.heic':
+        return Image.open(filepath).convert("RGB")
+    else:
+        return Image.open(filepath)
+
+
+def serve_local_image():
+    """Pick a random image from localdir, process it, and return a send_file response."""
+    if not os.path.isdir(localdir):
+        return jsonify({"error": f"Local photo directory not found: {localdir}"}), 500
+
+    candidates = [
+        f for f in os.listdir(localdir)
+        if os.path.splitext(f)[1].lower() in ALLOWED_EXTENSIONS
+    ]
+    if not candidates:
+        return jsonify({"error": "No supported images found in local directory"}), 404
+
+    filename = random.choice(candidates)
+    filepath = os.path.join(localdir, filename)
+    image = open_image_from_path(filepath)
+
+    processed_image = scale_img_in_memory(image)
+    processed_image.seek(0)
+    c_code = convert_to_c_code_in_memory(Image.open(processed_image))
+
+    stem = os.path.splitext(filename)[0]
+    return send_file(
+        c_code,
+        mimetype='text/plain',
+        as_attachment=True,
+        download_name=f"image_{stem}.c"
+    )
+
+
+def serve_immich_image():
+    """Pick an image from Immich, process it, and return a send_file response."""
+    current_url = url
+    current_albumname = albumname
+
+    if not current_url or not current_albumname:
+        return jsonify({"error": "Immich URL or Album not configured"}), 500
+
+    downloaded_images = load_downloaded_images()
+
+    response = requests.get(f"{current_url}/api/albums", headers=headers, params={"withoutAssets": "true"})
+    if response.status_code != 200:
+        print(f"[ERROR] GET /api/albums → HTTP {response.status_code}: {response.text[:500]}")
+        return jsonify({"error": "Failed to fetch albums", "status": response.status_code, "detail": response.text[:500]}), 500
+
+    data = response.json()
+    albumid = next((item['id'] for item in data if item['albumName'] == current_albumname), None)
+    if not albumid:
+        return jsonify({"error": "Album not found"}), 404
+
+    response = requests.get(f"{url}/api/albums/{albumid}", headers=headers)
+    if response.status_code != 200:
+        return jsonify({"error": "Failed to fetch album details"}), 500
+
+    data = response.json()
+    if 'assets' not in data or not data['assets']:
+        return jsonify({"error": "No images found in album"}), 404
+
+    current_image_order = current_config['immich']['image_order']
+
+    if current_image_order == 'newest':
+        latest_photo = max(data['assets'], key=lambda x: x.get('exifInfo', {}).get('dateTimeOriginal', '1970-01-01T00:00:00'))
+        latest_id = latest_photo['id']
+
+        downloaded_images = load_downloaded_images()
+        if not downloaded_images or latest_id not in downloaded_images:
+            reset_tracking_file()
+            sorted_assets = sorted(data['assets'],
+                                   key=lambda x: x.get('exifInfo', {}).get('dateTimeOriginal', '1970-01-01T00:00:00'),
+                                   reverse=True)
+            remaining_images = sorted_assets
+        else:
+            remaining_images = [img for img in data['assets'] if img['id'] not in downloaded_images]
+            remaining_images.sort(key=lambda x: x.get('exifInfo', {}).get('dateTimeOriginal', '1970-01-01T00:00:00'),
+                                  reverse=True)
+    else:  # random order
+        remaining_images = [img for img in data['assets'] if img['id'] not in downloaded_images]
+        if not remaining_images:
+            reset_tracking_file()
+            remaining_images = data['assets']
+
+    selected_image = remaining_images[0] if current_image_order == 'newest' else random.choice(remaining_images)
+    asset_id = selected_image['id']
+    save_downloaded_image(asset_id)
+
+    print(f"{url}/api/assets/{asset_id}/original")
+    response = requests.get(f"{url}/api/assets/{asset_id}/original", headers=headers, stream=True)
+    if response.status_code != 200:
+        return jsonify({"error": "Failed to download image"}), 500
+
+    image_data = io.BytesIO(response.content)
+    if selected_image['originalPath'].lower().endswith(('.raw', '.dng', '.arw', '.cr2', '.nef')):
+        with rawpy.imread(image_data) as raw:
+            rgb = raw.postprocess(use_camera_wb=True, use_auto_wb=False)
+            image = Image.fromarray(rgb)
+    elif selected_image['originalPath'].lower().endswith('.heic'):
+        image = Image.open(image_data).convert("RGB")
+    else:
+        image = Image.open(image_data)
+
+    processed_image = scale_img_in_memory(image)
+    processed_image.seek(0)
+    c_code = convert_to_c_code_in_memory(Image.open(processed_image))
+
+    return send_file(
+        c_code,
+        mimetype='text/plain',
+        as_attachment=True,
+        download_name=f"image_{asset_id}.c"
+    )
+
+
 @app.route('/download', methods=['GET'])
 def process_and_download():
-    
-    global url, albumname, last_battery_voltage, last_battery_update
-    
+    global last_battery_voltage, last_battery_update
+
     # Update battery information when received
     try:
         battery_voltage = float(request.headers.get('batteryCap', '0'))
@@ -680,111 +813,24 @@ def process_and_download():
             last_battery_update = time.time()
     except (TypeError, ValueError):
         pass
-    
-    # Use current global configuration
-    current_url = url
-    current_albumname = albumname
-    
-    battery_voltage = request.headers.get('batteryCap', 'Unknown')
-    # print(f"Battery: {battery_voltage} mV")
-    
+
     try:
-        # Check if url and albumname are valid
-        if not current_url or not current_albumname:
-            return jsonify({"error": "Immich URL or Album not configured"}), 500
-            
-        # Load list of downloaded images
-        downloaded_images = load_downloaded_images()
-            
-        # Get album list
-        response = requests.get(f"{current_url}/api/albums", headers=headers)
-        if response.status_code != 200:
-            return jsonify({"error": "Failed to fetch albums"}), 500
-        
-        # Find specified album
-        data = response.json()
-        albumid = next((item['id'] for item in data if item['albumName'] == current_albumname), None)
-        if not albumid:
-            return jsonify({"error": "Album not found"}), 404
-
-        # Get photos in the album
-        response = requests.get(f"{url}/api/albums/{albumid}", headers=headers)
-        if response.status_code != 200:
-            return jsonify({"error": "Failed to fetch album details"}), 500
-
-        data = response.json()
-        if 'assets' not in data or not data['assets']:
-            return jsonify({"error": "No images found in album"}), 404
-
-        # Get display order setting
-        image_order = current_config['immich']['image_order']
-
-        if image_order == 'newest':
-            # Check if new photos have been added
-            latest_photo = max(data['assets'], key=lambda x: x.get('exifInfo', {}).get('dateTimeOriginal', '1970-01-01T00:00:00'))
-            latest_id = latest_photo['id']
-            
-            # Reset tracking file if it's empty or latest photo is not in downloaded list
-            downloaded_images = load_downloaded_images()
-            if not downloaded_images or latest_id not in downloaded_images:
-                reset_tracking_file()
-                # Sort photos by capture time
-                sorted_assets = sorted(data['assets'], 
-                                    key=lambda x: x.get('exifInfo', {}).get('dateTimeOriginal', '1970-01-01T00:00:00'),
-                                    reverse=True)
-                remaining_images = sorted_assets
-            else:
-                # Sort undownloaded photos by time
-                remaining_images = [img for img in data['assets'] if img['id'] not in downloaded_images]
-                remaining_images.sort(key=lambda x: x.get('exifInfo', {}).get('dateTimeOriginal', '1970-01-01T00:00:00'),
-                                   reverse=True)
-        else:  # random order
-            remaining_images = [img for img in data['assets'] if img['id'] not in downloaded_images]
-            if not remaining_images:
-                reset_tracking_file()
-                remaining_images = data['assets']
-
-        # Select photo
-        selected_image = remaining_images[0] if image_order == 'newest' else random.choice(remaining_images)
-        asset_id = selected_image['id']
-        
-        # Record downloaded image
-        save_downloaded_image(asset_id)
-
-        # Download image to memory
-        response = requests.get(f"{url}/api/assets/{asset_id}/original", headers=headers, stream=True)
-        if response.status_code != 200:
-            return jsonify({"error": "Failed to download image"}), 500
-
-        # Process image in memory
-        image_data = io.BytesIO(response.content)
-        
-        # Process image based on its type
-        if selected_image['originalPath'].lower().endswith(('.raw', '.dng', '.arw', '.cr2', '.nef')):
-            with rawpy.imread(image_data) as raw:
-                rgb = raw.postprocess(use_camera_wb=True, use_auto_wb=False)
-                image = Image.fromarray(rgb)
-        elif selected_image['originalPath'].lower().endswith('.heic'):
-            image = Image.open(image_data).convert("RGB")
-        else:
-            image = Image.open(image_data)
-
-        # Process image
-        processed_image = scale_img_in_memory(image)
-        
-        # Convert to C code
-        processed_image.seek(0)
-        c_code = convert_to_c_code_in_memory(Image.open(processed_image))
-        
-        return send_file(
-            c_code,
-            mimetype='text/plain',
-            as_attachment=True,
-            download_name=f"image_{asset_id}.c"
+        # Local folder takes priority when it contains at least one image.
+        # Fall back to Immich when IMMICH_API_KEY is present.
+        local_has_images = os.path.isdir(localdir) and any(
+            os.path.splitext(f)[1].lower() in ALLOWED_EXTENSIONS
+            for f in os.listdir(localdir)
         )
+        if local_has_images:
+            return serve_local_image()
+        elif apikey:
+            return serve_immich_image()
+        else:
+            return jsonify({"error": "No image source configured. Add images to local_photos/ or set IMMICH_API_KEY."}), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/sleep', methods=['GET'])
 def get_sleep_duration():

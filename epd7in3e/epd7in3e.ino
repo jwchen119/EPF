@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <HTTPClient.h>
+#include <TFT_eSPI.h>
 #include "epd7in3e.h"
 #include "FS.h"
 #include <ArduinoJson.h>
@@ -12,18 +13,17 @@
 #include <Preferences.h>
 #include <WifiCaptive.h>
 #include <filesystem.h>
+#include <WiFi.h>
 
-/* Pin Layout Description
-DRIVER BOARD  <>  FireBeetle ESP32-C6
-BUSY          <>  18  // E-paper busy signal input
-RST           <>  14  // E-paper reset control
-DC            <>  8   // Data/Command control
-CS            <>  1   // Chip select control
-SCLK          <>  23  // SPI clock
-DIN           <>  22  // SPI data input
-GND           <>  GND // Ground
-VCC           <>  3V3 // Power supply
-SETTING       <>  2  // Configuration mode trigger pin
+/* Pin Layout — XIAO ESP32-S3 Plus on Seeed EE02 HAT
+   BUSY   <> GPIO5  (D3)
+   RST    <> GPIO38 (internal, wired by EE02 board)
+   DC     <> GPIO10
+   CS     <> GPIO44 (D7) + CS1 GPIO41
+   SCLK   <> GPIO8  (D8, HSPI)
+   MOSI   <> GPIO9  (HSPI, write-only)
+   WAKEUP <> GPIO2  (D0, RTC-capable)
+   CONFIG <> GPIO2  (sampled at boot only)
 */
 
 Preferences preferences;
@@ -32,7 +32,7 @@ class EpaperManager
 {
 private:
   // SimpleWiFiManager wifiManager;
-  Epd epd;
+  EPaper epaper;
   String imageUrl = "";
 
   bool downloadImage()
@@ -78,17 +78,6 @@ private:
       }
     }
 
-    // Add battery voltage to header
-    analogReadResolution(12);
-    int plusV = 0;
-    for (int i = 0; i < 50; i++)
-    {
-      plusV += analogReadMilliVolts(0);
-      delay(5);
-    }
-    int batteryVoltage = (plusV / 50) * 2;
-    http.addHeader("batteryCap", String(batteryVoltage));
-
     // Download and process image
     bool success = false;
     int sleepDuration = 0;
@@ -104,7 +93,7 @@ private:
 
         if (httpCode == HTTP_CODE_OK)
         {
-          success = processImageData(&http);
+          success = processImageData(*http.getStreamPtr(), http.getSize());
 
           // After successful image download, get sleep duration
           if (success)
@@ -208,135 +197,91 @@ private:
   }
 
   // Process image data stream and update display
-  bool processImageData(HTTPClient *http)
+  bool processImageData(WiFiClient &stream, int contentLength)
   {
-    WiFiClient *stream = http->getStreamPtr();
-    int contentLength = http->getSize();
-
-    // Validate content length
-    if (contentLength <= 0)
-    {
+    if (contentLength <= 0) {
       Serial.println("Invalid content length");
       return false;
     }
-    Serial.printf("Content-Length: %d bytes\n", contentLength);
-    Serial.println("Starting direct image processing...");
 
-    epd.SendCommand(0x10);
+    // Allocate PSRAM frame buffer (960,000 bytes for 1200x1600 4bpp)
+    uint8_t* frame_buf = (uint8_t*)ps_malloc(1200 * 1600 / 2);
+    if (!frame_buf) {
+      Serial.println("PSRAM allocation failed — check ps_malloc availability");
+      return false;
+    }
+    size_t frame_offset = 0;
+    const size_t FRAME_SIZE = 1200 * 1600 / 2;
 
-    uint8_t *buffer = (uint8_t *)malloc(BUFFER_SIZE);
-    if (buffer == NULL)
-    {
-      Serial.println("Buffer allocation failed");
+    // Allocate HTTP read chunk buffer on heap
+    uint8_t* chunk_buf = (uint8_t*)malloc(HTTP_CHUNK_SIZE);
+    if (!chunk_buf) {
+      Serial.println("Chunk buffer allocation failed");
+      free(frame_buf);
       return false;
     }
 
-    String hexBuffer;
-    int totalBytesProcessed = 0;
+    // Stream hex-CSV response into frame_buf
+    String hexBuffer = "";
+    int bytesRead = 0;
 
-    while (contentLength > 0 && http->connected())
-    {
-      int bytesToRead = min(contentLength, (int)sizeof(buffer));
-      int bytesRead = stream->readBytes(buffer, bytesToRead);
+    while (stream.connected() && bytesRead < contentLength) {
+      int available = stream.available();
+      if (available > 0) {
+        int toRead = min(available, (int)HTTP_CHUNK_SIZE);
+        int read = stream.readBytes(chunk_buf, toRead);
+        bytesRead += read;
 
-      if (bytesRead > 0)
-      {
-        for (int i = 0; i < bytesRead; i++)
-        {
-          char c = (char)buffer[i];
-          if (isDelimiter(c))
-          {
-            if (!hexBuffer.isEmpty())
-            {
-              uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), nullptr, 16);
-              epd.SendData(byteValue);
-              hexBuffer.clear();
+        for (int i = 0; i < read; i++) {
+          char c = (char)chunk_buf[i];
+          if (isDelimiter(c)) {
+            if (!hexBuffer.isEmpty()) {
+              uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), NULL, 16);
+              if (frame_offset < FRAME_SIZE) {
+                frame_buf[frame_offset++] = byteValue;
+              }
+              hexBuffer = "";
             }
-          }
-          else
-          {
+          } else {
             hexBuffer += c;
           }
         }
-
-        totalBytesProcessed += bytesRead;
-        contentLength -= bytesRead;
-      }
-      else
-      {
-        if (!http->connected())
-        {
-          Serial.println("HTTP connection lost!");
-          free(buffer);
-          return false;
-        }
-        delay(10);
+      } else {
+        delay(1);
       }
     }
 
-    if (!hexBuffer.isEmpty())
-    {
-      uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), nullptr, 16);
-      epd.SendData(byteValue);
+    // Handle any remaining hex in buffer
+    if (!hexBuffer.isEmpty()) {
+      uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), NULL, 16);
+      if (frame_offset < FRAME_SIZE) {
+        frame_buf[frame_offset++] = byteValue;
+      }
     }
 
-    free(buffer);
-    Serial.println("Showing image");
-    epd.TurnOnDisplay();
-    epd.Sleep();
+    free(chunk_buf);
 
+    if (frame_offset != FRAME_SIZE) {
+      Serial.printf("Warning: expected %d bytes, received %d\n", (int)FRAME_SIZE, (int)frame_offset);
+    }
+
+    // Push frame to display and trigger refresh
+    Serial.println("Pushing image to display...");
+    epaper.pushImage(0, 0, EPD_WIDTH, EPD_HEIGHT, (uint16_t*)frame_buf);
+    epaper.update();
+    epaper.sleep();
+    free(frame_buf);
+    Serial.println("Display updated");
     return true;
   }
 
   // Enter deep sleep mode with calculated wake-up interval
   void hibernate(int sleepDuration = 0)
   {
-    Serial.println("Preparing for deep sleep...");
-
-    // Use provided sleep duration or get default from WiFi manager
-    // int sleep_interval = sleepDuration > 0 ? sleepDuration : wifiManager.getServerSleepDuration();
-    int sleep_interval = sleepDuration > 0 ? sleepDuration : 86400;
-
-    // Disconnect WiFi and turn off radio
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    fs_deinit();
-    delay(50);
-    // Print sleep duration for debugging
-    Serial.printf("Sleep interval: %d seconds\n", sleep_interval);
-
-    // Convert sleep time to microseconds
-    uint64_t sleep_time;
-    if (sleep_interval > 0)
-    {
-      sleep_time = static_cast<uint64_t>(sleep_interval) * 1000000ULL;
-    }
-    else
-    {
-      sleep_time = static_cast<uint64_t>(SLEEP_INTERVAL) * 1000000ULL;
-    }
-
-    Serial.printf("Sleep time in microseconds: %llu\n", sleep_time);
-
-    // Configure wake up sources
-    esp_sleep_enable_timer_wakeup(sleep_time);
-
-    // Configure GPIO wake up
-    rtc_gpio_init(WAKEUP_PIN);
-    rtc_gpio_set_direction(WAKEUP_PIN, RTC_GPIO_MODE_INPUT_ONLY);
-    rtc_gpio_pullup_en(WAKEUP_PIN);
-    rtc_gpio_pulldown_dis(WAKEUP_PIN);
-    esp_sleep_enable_ext1_wakeup(1ULL << WAKEUP_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
-
-    // Wait for serial output to complete
-    Serial.println("Entering deep sleep mode...");
-    Serial.flush();
-
-    // Add delay before sleep
-    delay(50);
-
-    // Enter deep sleep
-    esp_deep_sleep_start();
+    // TODO: re-enable deep sleep once battery is connected
+    Serial.printf("hibernate() skipped (no battery) — would sleep %d s\n",
+                  sleepDuration > 0 ? sleepDuration : (int)SLEEP_INTERVAL);
+    return;
   }
 
   static void resetDeviceCredentials(void)
@@ -367,12 +312,18 @@ public:
     delay(50);
     pinMode(CONFIG_PIN, INPUT_PULLUP);
 
-    if (epd.Init() != 0)
-    {
-      Serial.println(F("e-Paper init failed"));
+    epaper.begin();
+
+    // Re-create sprite buffer here (PSRAM is guaranteed available at this point).
+    // The EPaper global constructor runs before PSRAM is set up if PSRAM board option
+    // is disabled, leaving _img8 = null and causing a crash on update().
+    epaper.deleteSprite();
+    if (!epaper.createSprite(EPD_WIDTH, EPD_HEIGHT)) {
+      Serial.println(F("ERROR: EPaper sprite allocation failed — enable PSRAM in board settings"));
+      Serial.println(F("  Arduino IDE > Tools > PSRAM > OPI PSRAM"));
       return false;
     }
-    Serial.println(F("e-Paper initialized successfully"));
+    Serial.println(F("e-Paper initialized successfully (Seeed_GFX)"));
 
     // initialize spiffs
     fs_init();
@@ -386,8 +337,8 @@ public:
     if (shouldEnterConfigMode())
     {
       Serial.println(F("Config button pressed, entering config mode..."));
-      epd.Clear(EPD_7IN3E_WHITE);
-      // epd.Sleep();
+      epaper.fillScreen(TFT_WHITE); epaper.update();
+      // epaper.sleep();
 
       bool res = WifiCaptivePortal.startPortal();
       if (res)
@@ -459,31 +410,14 @@ public:
     hibernate();
   }
 
-  // Check battery voltage level
-  bool checkVoltage()
-  {
-    analogReadResolution(12);
-    int analogVolts = analogReadMilliVolts(0);
-    // Multiply by 2 due to voltage divider
-    Serial.print("BAT millivolts value = ");
-    Serial.print(analogVolts * 2);
-    Serial.println("mV");
-    delay(50);
-    // Return false if battery voltage is below 3.05V
-    if (analogVolts * 2 < 3050)
-    {
-      return false;
-    }
-    return true;
-  }
-
   // Clear the e-paper display
   void clearScreen()
   {
-    epd.Init();
-    delay(1000);
-    epd.Clear(EPD_7IN3E_WHITE);
-    epd.Sleep();
+    epaper.begin();
+    delay(100);
+    epaper.fillScreen(TFT_WHITE);
+    epaper.update();
+    epaper.sleep();
   }
 };
 
@@ -492,6 +426,10 @@ EpaperManager epaperManager;
 
 void setup()
 {
+  Serial.begin(115200);
+  delay(3000); // wait for USB-CDC serial monitor to connect
+  Serial.println("\n\n=== EPF booting ===");
+  Serial.println("Hello World!");
   // Determine wake up reason
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
 
@@ -508,17 +446,6 @@ void setup()
     Serial.println("First boot or reset");
   }
 
-  if (!epaperManager.checkVoltage())
-  {
-    Serial.println(F("Battery low voltage (< 3.0V)"));
-    Serial.println(F("Sleep for 24hr"));
-    epaperManager.clearScreen();
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(1000);
-    esp_sleep_enable_timer_wakeup(86400 * 1000000ULL);
-    esp_deep_sleep_start();
-  }
   if (epaperManager.begin())
   {
     Serial.println(F("Begin successful, calling update"));

@@ -1,0 +1,17 @@
+services:
+  epf:
+    build: .
+    ports:
+      - "15151:5000"
+    environment:
+      - IMMICH_API_KEY=your-api-key-here
+
+    volumes:
+      # Immich photo cache + tracking.txt
+      - ./photos:/data/photos
+
+      # Local photos — drop images here to use the local source
+      - ./local_photos:/data/local_photos
+
+      # Config — persists settings changed via the /setting UI
+      - ./config:/data/config

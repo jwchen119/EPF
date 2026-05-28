@@ -6,8 +6,8 @@ bool fs_init(void)
 {
     if (!SPIFFS.begin(true))
     {
-        ESP.restart();
-        return false;
+        Serial.println(F("SPIFFS mount failed — check partition scheme (needs SPIFFS partition)"));
+        return false;  // non-fatal: WiFi credentials stored in NVS/Preferences, not SPIFFS
     }
     else
     {

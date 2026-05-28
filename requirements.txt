@@ -8,3 +8,4 @@ rawpy==0.23.2
 watchdog==6.0.0
 DateTime==5.5
 ntplib
+python-dotenv

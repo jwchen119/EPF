@@ -1,0 +1,18 @@
+# Docker persistent data (bind-mounted into the container)
+photos/
+local_photos/
+config/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.c
+.env
+
+# macOS
+.DS_Store
+
+.vscode/
+config.yaml

@@ -11,8 +11,9 @@ from PIL import Image
 from libc.stdint cimport uint16_t, uint32_t
 
 # Constants
-EPD_W = 800
-EPD_H = 480
+EPD_W = 1200
+EPD_H = 1600
+# Target: Seeed 13.3" Color Eink (T133A01), 1200x1600 portrait
 
 ctypedef np.float32_t FLOAT_TYPE
 ctypedef np.uint8_t UINT8_TYPE
@@ -112,13 +113,15 @@ def convert_image(input_image, preview_path=None, dithering_strength=1.0):
     # Prepare input data
     cdef np.ndarray[np.uint8_t, ndim=3] img_array = np.array(input_image, dtype=np.uint8)
     
+    # Seeed T133A01 color primaries (kE6Rgb from Seeed_GFX dither.cpp), normalized 0–1
+    # Order: black, white, yellow, red, blue, green — must match app.py palette order
     cdef double[:, :] epd_colors = np.array([
-        [0, 0, 0],
-        [1, 1, 1],
-        [1, 1, 0],
-        [1, 0, 0],
-        [0, 0, 1],
-        [0, 1, 0],
+        [0.0,   0.0,   0.0  ],   # black
+        [1.0,   1.0,   1.0  ],   # white
+        [1.0,   0.847, 0.0  ],   # yellow  (255, 216, 0)
+        [0.898, 0.224, 0.208],   # red     (229, 57, 53)
+        [0.0,   0.298, 1.0  ],   # blue    (0, 76, 255)
+        [0.114, 0.725, 0.329],   # green   (29, 185, 84)
     ], dtype=np.float64)
     
     # Prepare output arrays
