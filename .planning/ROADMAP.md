@@ -50,3 +50,14 @@ Plans:
 Plans:
 - [x] 04-01-PLAN.md — Add BAT_ADC_PIN/ADC_EN_PIN/MIN_BATTERY_VOLTAGE defines; implement checkVoltage() + enforceLowBatteryGuard() in EpaperManager; call from setup()
 - [x] 04-02-PLAN.md — Add 50-sample averaged batteryCap HTTP header in downloadImage(); replace hibernate() stub with USB/battery branching; document BQ24070 LED limitation
+
+## Phase 5: Documentation — Update README to Reflect Current Hardware and Features
+
+**Goal:** Rewrite README.md to accurately describe the current project: XIAO ESP32-S3 Plus + Seeed 13.3" Color E-paper (EE02 HAT) hardware, all new server features (date overlay, local photo source, display modes, sleep scheduling, battery monitoring), updated setup instructions (ghcr.io image, compose.yml, required Arduino libraries including TFT_eSPI), and CI/CD workflows.
+
+**Requirements:** DOC-01, DOC-02, DOC-03, DOC-04, DOC-05
+
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 05-01-PLAN.md — Rewrite README.md end-to-end: new header/Features/Components/pin map (Task 1) + Installation/Firmware/Development/License with ghcr.io + compose + Arduino libs + CI/CD (Task 2)

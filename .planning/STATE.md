@@ -3,19 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-last_updated: "2026-05-28T09:03:00.523Z"
+last_updated: "2026-05-28T09:32:47.059Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 5
+  completed_phases: 5
+  total_plans: 12
+  completed_plans: 12
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 04
+Phase: 05
 Plan: Not started
 
 ## Phase 1 Complete
@@ -59,3 +59,4 @@ Phase 01 (hardware-port) completed all 3 plans:
 - 50-sample averaged ADC read placed inside while(retryOnError) before for(MAX_RETRIES) — header set once per outer attempt before http.GET() (04-02)
 - hibernate() uses m_onBattery member directly (no parameter change needed) — refreshed by averaged read in downloadImage() (04-02)
 - uint32_t cast guards delay overflow: delay((uint32_t)sleep_interval * 1000UL) safe for intervals > 2147s (04-02)
+- Single atomic README write covers Tasks 1+2 — pin layout table sourced from epd7in3e.ino header; ghcr.io path uses lennartschmidt-de/epf (05-01)
