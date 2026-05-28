@@ -14,6 +14,11 @@
 #define BUTTON_DEBOUNCE 100U   // Button debounce time in ms
 #define BUTTON_HOLD_TIME 3000U // Button hold time in ms
 
+// Battery ADC configuration (EE02 board — confirmed from schematic)
+#define BAT_ADC_PIN          1U    // GPIO1 = BAT_ADC net (A0/D0)
+#define ADC_EN_PIN           5U    // GPIO5 = ADC_EN net (drives TPS22916 load switch)
+#define MIN_BATTERY_VOLTAGE  3050U // mV — below this triggers 24h sleep
+
 // Sleep and timing configuration
 #define SLEEP_TIME_COMPENSATION 1.009f // Sleep time compensation factor
 #define SLEEP_INTERVAL 3600U           // Default sleep interval in seconds (1 hour)

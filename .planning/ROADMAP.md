@@ -38,3 +38,15 @@ Plans:
 - [x] 03-01-PLAN.md — Install ruff/pyright, configure in pyproject.toml, resolve all lint and type errors locally (prerequisite)
 - [x] 03-02-PLAN.md — PR workflow: ruff + pyright + pytest as three parallel jobs on pull_request → main
 - [x] 03-03-PLAN.md — Deploy workflow: manual workflow_dispatch with semver input, build & push to ghcr.io ({version} + latest), git tag, GitHub Release with auto-notes
+
+## Phase 4: Battery Voltage — Detect power source, restore sleep, document charge LED limitation
+
+**Goal:** Restore battery voltage monitoring that was removed in Phase 1. Read the battery ADC on GPIO1 (gated by GPIO5 ADC_EN on the EE02 board), detect whether the device is running on battery or USB power, send voltage to the server as the `batteryCap` HTTP header (mV; 0 on USB-only), re-enable deep sleep when on battery (USB-only loops via delay + ESP.restart), and document that the green charge LEDs are BQ24070 PMIC-controlled with no firmware path to suppress them.
+
+**Requirements:** BV-01, BV-02, BV-03, BV-04, BV-05
+
+**Plans:** 2/2 plans complete
+
+Plans:
+- [x] 04-01-PLAN.md — Add BAT_ADC_PIN/ADC_EN_PIN/MIN_BATTERY_VOLTAGE defines; implement checkVoltage() + enforceLowBatteryGuard() in EpaperManager; call from setup()
+- [x] 04-02-PLAN.md — Add 50-sample averaged batteryCap HTTP header in downloadImage(); replace hibernate() stub with USB/battery branching; document BQ24070 LED limitation

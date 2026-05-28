@@ -34,6 +34,8 @@ private:
   // SimpleWiFiManager wifiManager;
   EPaper epaper;
   String imageUrl = "";
+  int m_batteryVoltageMv = 0;
+  bool m_onBattery = false;
 
   bool downloadImage()
   {
@@ -86,6 +88,32 @@ private:
     while (retryOnError && !success)
     {                       // Add retry loop
       retryOnError = false; // Default to no retry
+
+      // ---- Battery-aware HTTP header (BV-04) ----
+      // 50-sample averaged read for accurate header value. Single-read guard
+      // already ran in setup() via EpaperManager::checkVoltage(); this is a
+      // separate averaged read per original (git 8a000e1) behavior.
+      pinMode(ADC_EN_PIN, OUTPUT);
+      analogSetAttenuation(ADC_11db);
+      analogReadResolution(12);
+      digitalWrite(ADC_EN_PIN, HIGH);
+      delay(10);
+      int plusV = 0;
+      for (int i = 0; i < 50; i++) {
+        plusV += analogReadMilliVolts(BAT_ADC_PIN);
+        delay(5);
+      }
+      int avgBatteryMv = (plusV / 50) * 2;  // 1:1 divider
+      digitalWrite(ADC_EN_PIN, LOW);
+      bool avgOnBattery = (avgBatteryMv > 1500);
+      int headerValue = avgOnBattery ? avgBatteryMv : 0;
+      http.addHeader("batteryCap", String(headerValue));
+      Serial.printf("HTTP batteryCap header: %d mV (onBattery=%s)\n",
+                    headerValue, avgOnBattery ? "true" : "false");
+      // Refresh stored state so hibernate() sees the latest reading.
+      m_batteryVoltageMv = avgBatteryMv;
+      m_onBattery = avgOnBattery;
+      // ---- end battery header ----
 
       for (uint8_t i = 0; i < MAX_RETRIES; i++)
       {
@@ -275,13 +303,44 @@ private:
     return true;
   }
 
-  // Enter deep sleep mode with calculated wake-up interval
+  // Enter low-power state with calculated wake-up interval.
+  // Battery mode -> real deep sleep with timer + EXT1 GPIO2 wakeup.
+  // USB mode    -> delay then ESP.restart() (deep sleep stalls boards without battery).
   void hibernate(int sleepDuration = 0)
   {
-    // TODO: re-enable deep sleep once battery is connected
-    Serial.printf("hibernate() skipped (no battery) — would sleep %d s\n",
-                  sleepDuration > 0 ? sleepDuration : (int)SLEEP_INTERVAL);
-    return;
+    int sleep_interval = sleepDuration > 0 ? sleepDuration : (int)SLEEP_INTERVAL;
+
+    if (!m_onBattery) {
+      // USB power path (BV-02, BV-03): skip deep sleep entirely.
+      // delay() in Arduino-ESP32 calls vTaskDelay internally, which feeds the
+      // task watchdog. Cast to uint32_t to avoid int*int overflow at >2147s.
+      Serial.printf("USB power: waiting %d s then restarting\n", sleep_interval);
+      Serial.flush();
+      delay((uint32_t)sleep_interval * 1000UL);
+      ESP.restart();
+      return;
+    }
+
+    // Battery power path (BV-03): full deep sleep.
+    Serial.printf("Battery power: entering deep sleep for %d s\n", sleep_interval);
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    fs_deinit();
+    delay(50);
+
+    uint64_t sleep_time = (uint64_t)sleep_interval * 1000000ULL;
+    esp_sleep_enable_timer_wakeup(sleep_time);
+
+    rtc_gpio_init(WAKEUP_PIN);
+    rtc_gpio_set_direction(WAKEUP_PIN, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pullup_en(WAKEUP_PIN);
+    rtc_gpio_pulldown_dis(WAKEUP_PIN);
+    esp_sleep_enable_ext1_wakeup(1ULL << WAKEUP_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
+
+    Serial.println("Entering deep sleep...");
+    Serial.flush();
+    delay(50);
+    esp_deep_sleep_start();
   }
 
   static void resetDeviceCredentials(void)
@@ -419,6 +478,47 @@ public:
     epaper.update();
     epaper.sleep();
   }
+
+  // Read battery voltage via GPIO1 ADC behind GPIO5 ADC_EN gate.
+  // Returns mV (after 1:1 divider compensation). Single-sample read for
+  // the low-battery guard. The averaged read for the HTTP header is
+  // handled separately in downloadImage() (Plan 02).
+  int checkVoltage()
+  {
+    pinMode(ADC_EN_PIN, OUTPUT);
+    digitalWrite(ADC_EN_PIN, LOW);
+    analogSetAttenuation(ADC_11db);
+    analogReadResolution(12);
+    digitalWrite(ADC_EN_PIN, HIGH);
+    delay(10);  // load switch + divider settle time
+    int rawMv = analogReadMilliVolts(BAT_ADC_PIN);
+    digitalWrite(ADC_EN_PIN, LOW);
+    int vbatMv = rawMv * 2;  // 1:1 divider (R28=R29=10kΩ)
+    m_batteryVoltageMv = vbatMv;
+    m_onBattery = (vbatMv > 1500);
+    Serial.printf("Battery voltage: %d mV\n", vbatMv);
+    Serial.printf("Power source: %s\n", m_onBattery ? "battery" : "USB");
+    return vbatMv;
+  }
+
+  // Accessor used by Plan 02 to thread state into hibernate() / downloadImage().
+  bool isOnBattery() const { return m_onBattery; }
+  int batteryVoltageMv() const { return m_batteryVoltageMv; }
+
+  // Low-battery guard: if running on battery and below MIN_BATTERY_VOLTAGE,
+  // clear screen, disable WiFi, and enter 24h deep sleep. Does not return.
+  void enforceLowBatteryGuard()
+  {
+    if (m_onBattery && m_batteryVoltageMv < (int)MIN_BATTERY_VOLTAGE) {
+      Serial.printf("Battery low (%d mV < %u mV) — sleeping 24h\n",
+                    m_batteryVoltageMv, (unsigned)MIN_BATTERY_VOLTAGE);
+      clearScreen();
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+      esp_sleep_enable_timer_wakeup(86400ULL * 1000000ULL);
+      esp_deep_sleep_start();
+    }
+  }
 };
 
 // Global instance
@@ -428,8 +528,13 @@ void setup()
 {
   Serial.begin(115200);
   delay(3000); // wait for USB-CDC serial monitor to connect
-  Serial.println("\n\n=== EPF booting ===");
-  Serial.println("Hello World!");
+  // KNOWN HARDWARE LIMITATION (BV-05, D-12/D-13/D-14):
+  // The green charge LEDs (D5, D16 on EE02 board) are driven by the
+  // BQ24070 PMIC's STAT1/STAT2 open-drain outputs and are NOT connected
+  // to any XIAO GPIO. When no battery is present the PMIC enters a
+  // no-battery fault state and the LEDs blink. This cannot be suppressed
+  // from firmware. Accepted as a hardware-only behavior.
+  
   // Determine wake up reason
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
 
@@ -445,6 +550,9 @@ void setup()
   {
     Serial.println("First boot or reset");
   }
+
+  epaperManager.checkVoltage();
+  epaperManager.enforceLowBatteryGuard();
 
   if (epaperManager.begin())
   {

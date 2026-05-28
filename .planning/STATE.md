@@ -3,19 +3,19 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-last_updated: "2026-05-28T06:02:21.375Z"
+last_updated: "2026-05-28T09:03:00.523Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
+  total_phases: 4
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 11
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 03
+Phase: 04
 Plan: Not started
 
 ## Phase 1 Complete
@@ -52,3 +52,10 @@ Phase 01 (hardware-port) completed all 3 plans:
 - semver validated via bash regex ^[0-9]+\.[0-9]+\.[0-9]+$ before checkout; tag-already-exists guard prevents silent overwrites (03-03)
 - ${GITHUB_REPOSITORY,,} bash lowercase for ghcr.io image name; version+latest pushed atomically in single build-push-action step (03-03)
 - fetch-depth: 0 required for generate_release_notes to diff against previous tag; GITHUB_TOKEN only — no extra secrets (03-03)
+- Single-sample ADC read for low-battery guard; 50-sample average deferred to Plan 02 for HTTP header (04-01)
+- USB/battery detection: vbatMv > 1500 mV means battery present; ≤1500 means USB-only, guard skipped (04-01)
+- ADC_EN gate: OUTPUT LOW → ADC_11dB → HIGH → delay(10) → analogReadMilliVolts → LOW pattern (04-01)
+- hibernate() stub left intact in Plan 01; Plan 02 will replace it with battery/USB-conditional sleep (04-01)
+- 50-sample averaged ADC read placed inside while(retryOnError) before for(MAX_RETRIES) — header set once per outer attempt before http.GET() (04-02)
+- hibernate() uses m_onBattery member directly (no parameter change needed) — refreshed by averaged read in downloadImage() (04-02)
+- uint32_t cast guards delay overflow: delay((uint32_t)sleep_interval * 1000UL) safe for intervals > 2147s (04-02)
