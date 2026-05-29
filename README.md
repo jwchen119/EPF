@@ -150,16 +150,12 @@ The default `compose.yml` mounts three directories:
 
 Install these from **Tools → Manage Libraries…**:
 
-- **TFT_eSPI** (Bodmer) — graphics library; used as the dependency of Seeed_GFX.
 - **Seeed_GFX** — Seeed's fork providing the `EPaper` class for the T133A01 panel. Available from Seeed's library index or via Git: `https://github.com/Seeed-Studio/Seeed_GFX`.
-- **ArduinoJson** (Benoit Blanchon) — used to parse the `/sleep` JSON response.
-- **Preferences** — bundled with the ESP32 core; no separate install needed.
-
-The captive-portal code under `lib/WifiCaptive/` is bundled with this repo and compiles automatically when the sketch is opened.
+- **ArduinoJson** (Benoit Blanchon)
 
 ### Build and flash
 
-1. Open `epd7in3e/epd7in3e.ino` (the folder is already named `epd7in3e` — no renaming required).
+1. Open `epd7in3e/epd7in3e.ino`
 2. Click **Verify** to confirm the toolchain finds all libraries, then **Upload**.
 3. Open the serial monitor at 115200 baud. The first boot will log `e-Paper initialized successfully (Seeed_GFX)` and then enter captive-portal mode (no WiFi credentials stored).
 4. Connect to the Wi-Fi AP named `ESP32_ePAPER` from a phone or laptop.
@@ -172,7 +168,7 @@ To re-enter the captive portal later, **long-press** the config button (~3s) dur
 
 ### Known hardware limitation
 
-The EE02 board has two green charge-status LEDs (D5, D16) wired to the BQ24070 PMIC's `STAT1`/`STAT2` open-drain outputs. They are NOT connected to any XIAO GPIO and cannot be suppressed from firmware. When no battery is connected the PMIC enters a no-battery fault state and the LEDs blink. This is documented hardware behavior, not a firmware bug.
+The EE02 board has two green charge-status LEDs (D5, D16) wired to the BQ24070 PMIC's `STAT1`/`STAT2` open-drain outputs. They are NOT connected to any XIAO GPIO and cannot be suppressed from firmware. When no battery is connected the PMIC enters a no-battery fault state and the LEDs blink. This is documented hardware behavior.
 
 ## Development
 
