@@ -913,8 +913,15 @@ def settings():
                 'settings.html', config=current_config, error=f'Error saving configuration: {str(e)}'
             )
 
+    local_mode = os.path.isdir(localdir) and any(
+        os.path.splitext(f)[1].lower() in ALLOWED_EXTENSIONS for f in os.listdir(localdir)
+    )
     return render_template(
-        'settings.html', config=current_config, battery_voltage=battery_voltage, battery_percentage=battery_percentage
+        'settings.html',
+        config=current_config,
+        battery_voltage=battery_voltage,
+        battery_percentage=battery_percentage,
+        local_mode=local_mode,
     )
 
 

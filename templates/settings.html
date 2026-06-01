@@ -373,6 +373,14 @@
         </div>
 
         <form id="settingsForm" method="POST" onsubmit="handleSubmit(event)">
+            {% if local_mode %}
+            <div class="card">
+                <h2 class="card-title">Server Connection</h2>
+                <p class="small-text" style="color: var(--success-color); font-weight: 500;">
+                    Local photo mode is active — images are loaded from the local directory. Immich server settings are not used.
+                </p>
+            </div>
+            {% else %}
             <div class="card">
                 <h2 class="card-title">Server Connection</h2>
                 <div class="form-group">
@@ -387,6 +395,7 @@
                         placeholder="default_album" required>
                 </div>
             </div>
+            {% endif %}
 
             <div class="card">
                 <h2 class="card-title">Display Settings</h2>
