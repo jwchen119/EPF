@@ -76,3 +76,18 @@ Plans:
 - [x] 06-01-PLAN.md — Wave 0 (TDD RED): tests/test_overlay_customization.py with 9 failing contract tests (OVERLAY_COLORS, extended draw_date_overlay signature, bg/outline modes, config keys)
 - [x] 06-02-PLAN.md — TDD GREEN: add OVERLAY_COLORS dict + 6 DEFAULT_CONFIG keys + globals; extend draw_date_overlay() with style/colors/stroke (TC-01..TC-07)
 - [x] 06-03-PLAN.md — Wire update_app_config + POST handler + scale_img_in_memory call site + settings.html controls (TC-08, TC-09)
+
+### Phase 7: Geolocation overlay from image metadata
+
+**Goal:** Extend the image overlay to show the rough location where a photo was taken as a single-line `"City, Country • DD.MM.YYYY"` string. For local images, extract GPS from EXIF tag 34853 and reverse-geocode via geopy/Nominatim with a persistent JSON cache. For Immich images, read the pre-geocoded `city`/`country` from the already-fetched `exifInfo` dict (no extra API call). Fall back through geo+date → geo → date → hidden. No new config keys or UI controls — the existing date-overlay toggle and a static UI note suffice.
+
+**Requirements:** GEO-01, GEO-02, GEO-03, GEO-04, GEO-05, GEO-06, GEO-07, GEO-08, GEO-09, GEO-10, GEO-11, GEO-12
+
+**Depends on:** Phase 6
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 07-01-PLAN.md — Wave 0 (TDD RED): tests/test_geo_overlay.py with 12 failing contract tests + synthetic_gps_image/mock_geo_cache_dir fixtures (GEO-01..GEO-12)
+- [x] 07-02-PLAN.md — TDD GREEN: add geopy==2.4.1; implement extract_gps_from_exif() + reverse_geocode_cached() (JSON cache) + parse_photo_location() (GEO-01..GEO-08)
+- [x] 07-03-PLAN.md — Integration: extend scale_img_in_memory() with immich_exif_raw + geo/date fallback assembly; wire serve_immich_image; static settings UI note (GEO-09..GEO-12)

@@ -17,3 +17,5 @@ __pycache__/
 .vscode/
 config.yaml
 *.pdf
+test-images/
+geo_cache.json

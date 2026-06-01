@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_for_verification
-last_updated: "2026-05-29T08:00:00.000Z"
+status: Milestone complete
+last_updated: "2026-06-01T20:00:00.000Z"
 progress:
-  total_phases: 6
-  completed_phases: 5
-  total_plans: 15
-  completed_plans: 14
+  total_phases: 7
+  completed_phases: 7
+  total_plans: 18
+  completed_plans: 18
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 06 (text-customization-colors-styles-and-border-mode) — COMPLETE
-Plan: 3 of 3 — all plans complete; awaiting verification
+Phase: 07
+Plan: Not started
 
 ## Phase 1 Complete
 
@@ -66,6 +66,11 @@ Phase 01 (hardware-port) completed all 3 plans:
 - 6 overlay globals added to update_app_config() global statement with .get() fallback reads; backward compat with old config.yaml (06-03)
 - int() cast on slider values in both update_app_config() and POST handler; prevents type errors when YAML loads values as strings (06-03)
 - Color dropdowns always visible — no JS show/hide; small-text labels describe applicability per style mode (06-03)
+- float() cast on IFDRational DMS components before arithmetic — required for Pillow GPS EXIF parsing (07-02 D-15)
+- Cache key uses round(float(lat),3),round(float(lon),3) — aligns with GEO-07/08 test assertions (07-02 D-12)
+- Nominatim module-level import, function-level instantiation — enables monkeypatching while avoiding module-level instantiation anti-pattern (07-02)
+- pre_transpose_image captured before exif_transpose so GPS EXIF safely readable from original image object (07-03)
+- serve_immich_image passes selected_image.get('exifInfo', {}) (empty dict, not None) for consistent type in parse_photo_location (07-03)
 
 ## Phase 6 Plan Status
 
@@ -75,8 +80,24 @@ Phase 01 (hardware-port) completed all 3 plans:
 | 06-02 | OVERLAY_COLORS, config schema, extended draw_date_overlay() | complete |
 | 06-03 | UI/POST wiring and settings.html | complete |
 
+## Phase 7 Plan Status
+
+| Plan | Name | Status |
+|------|------|--------|
+| 07-01 | TDD RED contract tests (GEO-01..GEO-12) | complete |
+| 07-02 | extract_gps_from_exif, reverse_geocode_cached, parse_photo_location | complete |
+| 07-03 | Wire immich_exif_raw into scale_img_in_memory + settings UI | complete |
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260601-tat | Add geo overlay toggle to settings — allow showing date, location, both, or neither | 2026-06-01 | 6cdb4dd | [260601-tat-add-geo-overlay-toggle-to-settings-allow](.planning/quick/260601-tat-add-geo-overlay-toggle-to-settings-allow/) |
+| 260601-udz | Add language switching for geo-location overlay | 2026-06-01 | 532bcb5 | [260601-udz-add-language-switching-for-geo-location-](.planning/quick/260601-udz-add-language-switching-for-geo-location-/) |
+
 ## Accumulated Context
 
 ### Roadmap Evolution
 
 - Phase 6 added: Text customization — colors, styles, and border mode (timestamp background color, text color, border style option with configurable border/text color; all exposed in Configuration UI)
+- Phase 7 added: Geolocation overlay from image metadata — extend overlay to show rough location from EXIF/Immich API; fall back to timestamp if no geo info present

@@ -458,6 +458,7 @@
 
             <div class="card">
                 <h2 class="card-title">Date Overlay</h2>
+                <p class="small-text">Configure which information appears on the image. Enable the date and/or location overlay below.</p>
                 <div class="form-group">
                     <label for="date_overlay_enabled">Show Photo Date:</label>
                     <select id="date_overlay_enabled" name="date_overlay_enabled">
@@ -465,6 +466,22 @@
                         <option value="on"  {% if config['immich'].get('date_overlay_enabled', false) %}selected{% endif %}>On</option>
                     </select>
                     <div class="small-text">Display the date the photo was taken on the image. Off by default.</div>
+                </div>
+                <div class="form-group">
+                    <label for="geo_overlay_enabled">Show Location:</label>
+                    <select id="geo_overlay_enabled" name="geo_overlay_enabled">
+                        <option value="off" {% if not config['immich'].get('geo_overlay_enabled', true) %}selected{% endif %}>Off</option>
+                        <option value="on"  {% if config['immich'].get('geo_overlay_enabled', true) %}selected{% endif %}>On</option>
+                    </select>
+                    <div class="small-text">Display the city and country from photo GPS or Immich metadata. On by default.</div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_language">Location Language:</label>
+                    <select id="overlay_language" name="overlay_language">
+                        <option value="en" {% if config['immich'].get('overlay_language', 'en') == 'en' %}selected{% endif %}>English</option>
+                        <option value="de" {% if config['immich'].get('overlay_language', 'en') == 'de' %}selected{% endif %}>Deutsch</option>
+                    </select>
+                    <div class="small-text">Language for GPS-derived place names (e.g. "Germany" / "Deutschland"). Note: locations supplied directly by Immich keep Immich's language.</div>
                 </div>
                 <div class="form-group">
                     <label for="date_overlay_position">Overlay Position:</label>

@@ -1,5 +1,6 @@
 # -*- coding:utf8 -*-
 import io
+import json
 import os
 import random
 import threading
@@ -11,6 +12,8 @@ import requests
 import yaml
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
+from geopy.exc import GeocoderServiceError, GeocoderTimedOut
+from geopy.geocoders import Nominatim
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
 from pillow_heif import register_heif_opener
 from watchdog.events import FileSystemEventHandler
@@ -47,6 +50,7 @@ DEFAULT_CONFIG = {
         'sleep_end_minute': 0,  # Sleep end time 6:00 (6:00 AM)
         'wakeup_interval': 60,  # Default 60 minutes (1 hour)
         'date_overlay_enabled': False,  # D-01: overlay off by default
+        'geo_overlay_enabled': True,  # location visible by default when date overlay is on
         'date_overlay_position': 'bottomRight',  # D-05: default position
         'overlay_style': 'background',  # D-04/D-14: "background" | "outline"
         'overlay_bg_color': 'black',  # D-06/D-14: rect fill (background mode)
@@ -54,6 +58,7 @@ DEFAULT_CONFIG = {
         'overlay_border_color': 'white',  # D-08/D-14: stroke color (outline mode)
         'overlay_stroke_width': 2,  # D-09/D-11/D-14: stroke px (outline mode), int
         'overlay_font_size': 26,  # D-12/D-13/D-14: font px, int
+        'overlay_language': 'en',  # 'en' | 'de' — Nominatim reverse-geocode language (GEO-LANG)
     }
 }
 
@@ -80,6 +85,113 @@ def parse_photo_date(raw_str):
             return datetime.strptime(raw_str[:10], '%Y-%m-%d').strftime('%d.%m.%Y')
         except ValueError:
             return None
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Geolocation helpers (Phase 7 — D-10..D-16)
+# ---------------------------------------------------------------------------
+
+_GEO_CACHE = None  # lazily-loaded geo_cache.json dict
+
+
+def extract_gps_from_exif(image):
+    """Return (lat_float, lon_float) tuple or None. Never raises."""
+    try:
+        exif = image._getexif()
+        if not exif:
+            return None
+        gps_info = exif.get(34853)
+        if not gps_info:
+            return None
+        lat_dms = gps_info.get(2)
+        lat_ref = gps_info.get(1, 'N')
+        lon_dms = gps_info.get(4)
+        lon_ref = gps_info.get(3, 'E')
+        if not lat_dms or not lon_dms:
+            return None
+        lat = float(lat_dms[0]) + float(lat_dms[1]) / 60.0 + float(lat_dms[2]) / 3600.0
+        lon = float(lon_dms[0]) + float(lon_dms[1]) / 60.0 + float(lon_dms[2]) / 3600.0
+        if lat_ref == 'S':
+            lat = -lat
+        if lon_ref == 'W':
+            lon = -lon
+        return (lat, lon)
+    except (AttributeError, Exception):
+        return None
+
+
+def _geo_cache_path():
+    dest = os.environ.get('IMMICH_PHOTO_DEST', '')
+    base = dest if dest else os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, 'geo_cache.json')
+
+
+def _load_geo_cache():
+    global _GEO_CACHE
+    if _GEO_CACHE is None:
+        try:
+            with open(_geo_cache_path(), 'r', encoding='utf-8') as f:
+                _GEO_CACHE = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            _GEO_CACHE = {}
+    return _GEO_CACHE
+
+
+def _save_geo_cache(cache):
+    try:
+        with open(_geo_cache_path(), 'w', encoding='utf-8') as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f'[WARN] Could not save geo_cache.json: {e}')
+
+
+def reverse_geocode_cached(lat, lon):
+    """Return 'City, Country' string or None. Persistent JSON cache; null cached on failure.
+
+    Cache key is language-suffixed (e.g. '48.135,11.582:en') so 'en' and 'de' results coexist.
+    Language is read from the module-level `overlay_language` global (default 'en').
+    """
+    key = f'{round(float(lat), 3)},{round(float(lon), 3)}:{overlay_language}'
+    cache = _load_geo_cache()
+    if key in cache:
+        return cache[key]
+    result = None
+    try:
+        geolocator = Nominatim(user_agent='epf-photo-frame/1.0', timeout=5)  # type: ignore[arg-type]
+        location = geolocator.reverse((lat, lon), exactly_one=True, language=overlay_language)  # type: ignore[arg-type]
+        if location:
+            addr = location.raw.get('address', {})  # type: ignore[union-attr]
+            city = addr.get('city') or addr.get('town') or addr.get('village')
+            country = addr.get('country')
+            if city and country:
+                result = f'{city}, {country}'
+    except (GeocoderTimedOut, GeocoderServiceError, Exception) as e:
+        print(f'[WARN] Nominatim geocoding failed for ({lat},{lon}): {e}')
+    cache[key] = result
+    _save_geo_cache(cache)
+    return result
+
+
+def parse_photo_location(local_image=None, immich_exif=None):
+    """Return 'City, Country' string or None.
+
+    Priority: Immich exifInfo city/country first; local GPS EXIF second.
+    Follows parse_photo_date() None-propagation contract.
+    """
+    if immich_exif:
+        city = immich_exif.get('city') or ''
+        country = immich_exif.get('country') or ''
+        if city and country:
+            return f'{city}, {country}'
+        if city:
+            return city
+        if country:
+            return country
+    if local_image is not None:
+        coords = extract_gps_from_exif(local_image)
+        if coords:
+            return reverse_geocode_cached(coords[0], coords[1])
     return None
 
 
@@ -198,6 +310,7 @@ sleep_start_minute = DEFAULT_CONFIG['immich']['sleep_start_minute']
 sleep_end_hour = DEFAULT_CONFIG['immich']['sleep_end_hour']
 sleep_end_minute = DEFAULT_CONFIG['immich']['sleep_end_minute']
 date_overlay_enabled = DEFAULT_CONFIG['immich']['date_overlay_enabled']
+geo_overlay_enabled = DEFAULT_CONFIG['immich']['geo_overlay_enabled']
 date_overlay_position = DEFAULT_CONFIG['immich']['date_overlay_position']
 overlay_style = DEFAULT_CONFIG['immich']['overlay_style']
 overlay_bg_color = DEFAULT_CONFIG['immich']['overlay_bg_color']
@@ -205,6 +318,7 @@ overlay_text_color = DEFAULT_CONFIG['immich']['overlay_text_color']
 overlay_border_color = DEFAULT_CONFIG['immich']['overlay_border_color']
 overlay_stroke_width = DEFAULT_CONFIG['immich']['overlay_stroke_width']
 overlay_font_size = DEFAULT_CONFIG['immich']['overlay_font_size']
+overlay_language = DEFAULT_CONFIG['immich']['overlay_language']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
@@ -333,7 +447,9 @@ def depalette_image(pixels, palette):
     return indices
 
 
-def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(255, 255, 255), immich_date_raw=None):
+def scale_img_in_memory(
+    image, target_width=1200, target_height=1600, bg_color=(255, 255, 255), immich_date_raw=None, immich_exif_raw=None
+):
     """
     Process image in memory, return BytesIO object
 
@@ -342,6 +458,7 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
     :param target_height: height of epaper
     :param bg_color: background color
     :param immich_date_raw: raw date string from Immich exifInfo.dateTimeOriginal (ISO 8601), or None
+    :param immich_exif_raw: full Immich exifInfo dict (city/country/lat/lon), or None
     :return: BytesIO object
     """
 
@@ -356,6 +473,9 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
             date_time_raw = exif.get(36867) or exif.get(306)
     except (AttributeError, Exception):
         date_time_raw = None
+
+    # Preserve pre-transpose image reference for GPS EXIF extraction (GPS survives transpose in metadata)
+    pre_transpose_image = image
 
     # Read correct photo orientation from EXIF
     image = ImageOps.exif_transpose(image)
@@ -413,10 +533,21 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
     output_img = convert_image(enhanced_img, dithering_strength=strength)
     output_img = Image.fromarray(output_img, mode='RGB')
 
-    # Date overlay (DO-01 + DO-02 + DO-03 + DO-04). Off by default (D-01); silently hidden when no date (D-03).
+    # Date/geo overlay (D-07/D-19 fallback chain). Off by default (D-01); silently hidden when neither available (D-03).
     if date_overlay_enabled:
+        location_str = (
+            parse_photo_location(local_image=pre_transpose_image, immich_exif=immich_exif_raw)
+            if geo_overlay_enabled
+            else None
+        )
         date_str = parse_photo_date(immich_date_raw) or parse_photo_date(date_time_raw)
-        if date_str:
+        if location_str and date_str:
+            overlay_text = f'{location_str} • {date_str}'
+        elif location_str:
+            overlay_text = location_str
+        else:
+            overlay_text = date_str  # may be None -> overlay hidden
+        if overlay_text:
             try:
                 font = ImageFont.truetype(
                     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
@@ -426,7 +557,7 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
                 font = ImageFont.load_default()
             draw_date_overlay(
                 output_img,
-                date_str,
+                overlay_text,
                 font,
                 date_overlay_position,
                 padding=6,
@@ -550,10 +681,10 @@ class ConfigFileHandler(FileSystemEventHandler):
         """Load config"""
         try:
             with open(self.config_path, 'r') as file:
-                return yaml.safe_load(file)
+                config = yaml.safe_load(file)
+            return config if config is not None else DEFAULT_CONFIG
         except Exception as e:
             print(f'Error reading config file: {e}')
-            # Fallback to default configuration if reading fails
             return DEFAULT_CONFIG
 
 
@@ -574,13 +705,15 @@ def update_app_config(new_config):
         sleep_start_minute, \
         sleep_end_minute, \
         date_overlay_enabled, \
+        geo_overlay_enabled, \
         date_overlay_position, \
         overlay_style, \
         overlay_bg_color, \
         overlay_text_color, \
         overlay_border_color, \
         overlay_stroke_width, \
-        overlay_font_size
+        overlay_font_size, \
+        overlay_language
 
     current_config = new_config
 
@@ -612,6 +745,7 @@ def update_app_config(new_config):
     sleep_start_minute = new_config['immich']['sleep_start_minute']
     sleep_end_minute = new_config['immich']['sleep_end_minute']
     date_overlay_enabled = new_config['immich'].get('date_overlay_enabled', False)
+    geo_overlay_enabled = new_config['immich'].get('geo_overlay_enabled', True)
     date_overlay_position = new_config['immich'].get('date_overlay_position', 'bottomRight')
     overlay_style = new_config['immich'].get('overlay_style', 'background')
     overlay_bg_color = new_config['immich'].get('overlay_bg_color', 'black')
@@ -619,6 +753,7 @@ def update_app_config(new_config):
     overlay_border_color = new_config['immich'].get('overlay_border_color', 'white')
     overlay_stroke_width = int(new_config['immich'].get('overlay_stroke_width', 2))
     overlay_font_size = int(new_config['immich'].get('overlay_font_size', 26))
+    overlay_language = new_config['immich'].get('overlay_language', 'en')
 
     print(
         f'Configuration updated: URL = {url}, Album = {albumname}, angle = {rotationAngle}, enhance = {img_enhanced}, contrast = {img_contrast}, strength = {strength}, display_mode = {display_mode}, image_order = {image_order}'
@@ -731,6 +866,7 @@ def settings():
                     request.form.get('wakeup_interval', current_config['immich']['wakeup_interval'])
                 ),
                 'date_overlay_enabled': request.form.get('date_overlay_enabled', 'off') == 'on',
+                'geo_overlay_enabled': request.form.get('geo_overlay_enabled', 'off') == 'on',
                 'date_overlay_position': request.form.get('date_overlay_position', 'bottomRight'),
                 'overlay_style': request.form.get(
                     'overlay_style', current_config['immich'].get('overlay_style', 'background')
@@ -749,6 +885,9 @@ def settings():
                 ),
                 'overlay_font_size': int(
                     request.form.get('overlay_font_size', current_config['immich'].get('overlay_font_size', 26))
+                ),
+                'overlay_language': request.form.get(
+                    'overlay_language', current_config['immich'].get('overlay_language', 'en')
                 ),
             }
         }
@@ -940,7 +1079,11 @@ def serve_immich_image():
         image = Image.open(image_data)
 
     immich_date_raw = selected_image.get('exifInfo', {}).get('dateTimeOriginal')
-    processed_image = scale_img_in_memory(image, immich_date_raw=immich_date_raw)
+    processed_image = scale_img_in_memory(
+        image,
+        immich_date_raw=immich_date_raw,
+        immich_exif_raw=selected_image.get('exifInfo', {}),
+    )
     processed_image.seek(0)
     c_code = convert_to_c_code_in_memory(Image.open(processed_image))
 

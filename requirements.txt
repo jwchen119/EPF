@@ -3,6 +3,7 @@ requests==2.32.3
 numpy==2.0.2
 pillow==11.0.0
 pillow_heif==0.21.0
+geopy==2.4.1
 PyYAML==6.0.2
 rawpy==0.23.2
 watchdog==6.0.0
