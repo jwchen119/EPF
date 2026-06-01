@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-05-28T09:32:47.059Z"
+status: ready_for_verification
+last_updated: "2026-05-29T08:00:00.000Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 14
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 05
-Plan: Not started
+Phase: 06 (text-customization-colors-styles-and-border-mode) — COMPLETE
+Plan: 3 of 3 — all plans complete; awaiting verification
 
 ## Phase 1 Complete
 
@@ -60,3 +60,23 @@ Phase 01 (hardware-port) completed all 3 plans:
 - hibernate() uses m_onBattery member directly (no parameter change needed) — refreshed by averaged read in downloadImage() (04-02)
 - uint32_t cast guards delay overflow: delay((uint32_t)sleep_interval * 1000UL) safe for intervals > 2147s (04-02)
 - Single atomic README write covers Tasks 1+2 — pin layout table sourced from epd7in3e.ino header; ghcr.io path uses lennartschmidt-de/epf (05-01)
+- stroke_width passed to textbbox probe only in outline mode — background mode bbox matches legacy exactly (D-14 compat) (06-02)
+- outline mode omits draw.rectangle() entirely; stroke provides visual separation per D-07 (06-02)
+- OVERLAY_COLORS dict placed after palette list to co-locate authoritative RGB source with derived RGBA lookup (06-02)
+- 6 overlay globals added to update_app_config() global statement with .get() fallback reads; backward compat with old config.yaml (06-03)
+- int() cast on slider values in both update_app_config() and POST handler; prevents type errors when YAML loads values as strings (06-03)
+- Color dropdowns always visible — no JS show/hide; small-text labels describe applicability per style mode (06-03)
+
+## Phase 6 Plan Status
+
+| Plan | Name | Status |
+|------|------|--------|
+| 06-01 | TDD RED contract tests (TC-01..TC-09) | complete |
+| 06-02 | OVERLAY_COLORS, config schema, extended draw_date_overlay() | complete |
+| 06-03 | UI/POST wiring and settings.html | complete |
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 6 added: Text customization — colors, styles, and border mode (timestamp background color, text color, border style option with configurable border/text color; all exposed in Configuration UI)

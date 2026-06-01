@@ -48,6 +48,12 @@ DEFAULT_CONFIG = {
         'wakeup_interval': 60,  # Default 60 minutes (1 hour)
         'date_overlay_enabled': False,  # D-01: overlay off by default
         'date_overlay_position': 'bottomRight',  # D-05: default position
+        'overlay_style': 'background',  # D-04/D-14: "background" | "outline"
+        'overlay_bg_color': 'black',  # D-06/D-14: rect fill (background mode)
+        'overlay_text_color': 'white',  # D-06/D-07/D-14: text glyph fill (both modes)
+        'overlay_border_color': 'white',  # D-08/D-14: stroke color (outline mode)
+        'overlay_stroke_width': 2,  # D-09/D-11/D-14: stroke px (outline mode), int
+        'overlay_font_size': 26,  # D-12/D-13/D-14: font px, int
     }
 }
 
@@ -92,8 +98,20 @@ POSITIONS = {
 }
 
 
-def draw_date_overlay(output_img, text, font, position_str, padding=6, rotation=0):
-    """Draw white text on a solid black background rectangle at position_str.
+def draw_date_overlay(
+    output_img,
+    text,
+    font,
+    position_str,
+    padding=6,
+    rotation=0,
+    style='background',
+    bg_color=(0, 0, 0, 255),
+    text_color=(255, 255, 255, 255),
+    border_color=(255, 255, 255, 255),
+    stroke_width=2,
+):
+    """Draw a date overlay (filled-background or outline style) at position_str.
 
     Accounts for display rotation so that position_str refers to the viewer's
     visual corner (e.g. 'bottomRight' always appears at the viewer's bottom-right
@@ -105,10 +123,15 @@ def draw_date_overlay(output_img, text, font, position_str, padding=6, rotation=
         text:         String to render (e.g. '05.01.2022').
         font:         PIL ImageFont instance.
         position_str: One of POSITIONS keys; unknown values fall back to 'bottomRight'.
-        padding:      Pixels of black background around the text on all sides.
+        padding:      Pixels of background around the text on all sides.
         rotation:     Display rotation angle in degrees (0, 90, 180, 270).
                       Must match the rotationAngle used by load_scaled so that
                       the overlay is placed correctly in viewer space.
+        style:        "background" (filled rect + text) or "outline" (stroke text only).
+        bg_color:     RGBA tuple for the filled rectangle in background mode.
+        text_color:   RGBA tuple for the text glyph fill in both modes.
+        border_color: RGBA tuple for the stroke in outline mode.
+        stroke_width: Stroke width in pixels used in outline mode.
     """
     bw, bh = output_img.size  # buffer dimensions (always 1200x1600)
 
@@ -120,7 +143,8 @@ def draw_date_overlay(output_img, text, font, position_str, padding=6, rotation=
 
     # --- Step 1: measure text in viewer space ---
     _probe = ImageDraw.Draw(Image.new('RGB', (1, 1)))
-    bbox = _probe.textbbox((0, 0), text, font=font)
+    sw = stroke_width if style == 'outline' else 0
+    bbox = _probe.textbbox((0, 0), text, font=font, stroke_width=sw)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
 
@@ -132,8 +156,18 @@ def draw_date_overlay(output_img, text, font, position_str, padding=6, rotation=
     viewer_canvas = Image.new('RGBA', (vw, vh), (0, 0, 0, 0))
     draw = ImageDraw.Draw(viewer_canvas)
     rect = [x - padding, y - padding, x + tw + padding, y + th + padding]
-    draw.rectangle(rect, fill=(0, 0, 0, 255))
-    draw.text((x - bbox[0], y - bbox[1]), text, fill=(255, 255, 255, 255), font=font)
+    if style == 'background':
+        draw.rectangle(rect, fill=bg_color)
+        draw.text((x - bbox[0], y - bbox[1]), text, fill=text_color, font=font)
+    else:  # outline — no rectangle, stroke provides separation (D-07)
+        draw.text(
+            (x - bbox[0], y - bbox[1]),
+            text,
+            fill=text_color,
+            font=font,
+            stroke_width=stroke_width,
+            stroke_fill=border_color,
+        )
 
     # --- Step 4: rotate viewer canvas into buffer orientation ---
     # load_scaled rotated the image content by `rotation`° CCW; apply the same
@@ -165,6 +199,12 @@ sleep_end_hour = DEFAULT_CONFIG['immich']['sleep_end_hour']
 sleep_end_minute = DEFAULT_CONFIG['immich']['sleep_end_minute']
 date_overlay_enabled = DEFAULT_CONFIG['immich']['date_overlay_enabled']
 date_overlay_position = DEFAULT_CONFIG['immich']['date_overlay_position']
+overlay_style = DEFAULT_CONFIG['immich']['overlay_style']
+overlay_bg_color = DEFAULT_CONFIG['immich']['overlay_bg_color']
+overlay_text_color = DEFAULT_CONFIG['immich']['overlay_text_color']
+overlay_border_color = DEFAULT_CONFIG['immich']['overlay_border_color']
+overlay_stroke_width = DEFAULT_CONFIG['immich']['overlay_stroke_width']
+overlay_font_size = DEFAULT_CONFIG['immich']['overlay_font_size']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
@@ -201,6 +241,16 @@ palette = [
     (0, 76, 255),  # index 4 → T133A01 nibble 0xD (blue)
     (29, 185, 84),  # index 5 → T133A01 nibble 0x2 (green)
 ]
+
+# Source: palette above (authoritative). String name -> RGBA for overlay color resolution.
+OVERLAY_COLORS = {
+    'black': (0, 0, 0, 255),
+    'white': (255, 255, 255, 255),
+    'yellow': (255, 216, 0, 255),
+    'red': (229, 57, 53, 255),
+    'blue': (0, 76, 255, 255),
+    'green': (29, 185, 84, 255),
+}
 
 last_battery_voltage = 0
 last_battery_update = 0
@@ -368,10 +418,25 @@ def scale_img_in_memory(image, target_width=1200, target_height=1600, bg_color=(
         date_str = parse_photo_date(immich_date_raw) or parse_photo_date(date_time_raw)
         if date_str:
             try:
-                font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 26)
+                font = ImageFont.truetype(
+                    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                    overlay_font_size,
+                )
             except (IOError, OSError):
                 font = ImageFont.load_default()
-            draw_date_overlay(output_img, date_str, font, date_overlay_position, padding=6, rotation=rotation)
+            draw_date_overlay(
+                output_img,
+                date_str,
+                font,
+                date_overlay_position,
+                padding=6,
+                rotation=rotation,
+                style=overlay_style,
+                bg_color=OVERLAY_COLORS.get(overlay_bg_color, (0, 0, 0, 255)),
+                text_color=OVERLAY_COLORS.get(overlay_text_color, (255, 255, 255, 255)),
+                border_color=OVERLAY_COLORS.get(overlay_border_color, (255, 255, 255, 255)),
+                stroke_width=overlay_stroke_width,
+            )
 
     # Save image into ram
     img_io = io.BytesIO()
@@ -509,7 +574,13 @@ def update_app_config(new_config):
         sleep_start_minute, \
         sleep_end_minute, \
         date_overlay_enabled, \
-        date_overlay_position
+        date_overlay_position, \
+        overlay_style, \
+        overlay_bg_color, \
+        overlay_text_color, \
+        overlay_border_color, \
+        overlay_stroke_width, \
+        overlay_font_size
 
     current_config = new_config
 
@@ -542,6 +613,12 @@ def update_app_config(new_config):
     sleep_end_minute = new_config['immich']['sleep_end_minute']
     date_overlay_enabled = new_config['immich'].get('date_overlay_enabled', False)
     date_overlay_position = new_config['immich'].get('date_overlay_position', 'bottomRight')
+    overlay_style = new_config['immich'].get('overlay_style', 'background')
+    overlay_bg_color = new_config['immich'].get('overlay_bg_color', 'black')
+    overlay_text_color = new_config['immich'].get('overlay_text_color', 'white')
+    overlay_border_color = new_config['immich'].get('overlay_border_color', 'white')
+    overlay_stroke_width = int(new_config['immich'].get('overlay_stroke_width', 2))
+    overlay_font_size = int(new_config['immich'].get('overlay_font_size', 26))
 
     print(
         f'Configuration updated: URL = {url}, Album = {albumname}, angle = {rotationAngle}, enhance = {img_enhanced}, contrast = {img_contrast}, strength = {strength}, display_mode = {display_mode}, image_order = {image_order}'
@@ -655,6 +732,24 @@ def settings():
                 ),
                 'date_overlay_enabled': request.form.get('date_overlay_enabled', 'off') == 'on',
                 'date_overlay_position': request.form.get('date_overlay_position', 'bottomRight'),
+                'overlay_style': request.form.get(
+                    'overlay_style', current_config['immich'].get('overlay_style', 'background')
+                ),
+                'overlay_bg_color': request.form.get(
+                    'overlay_bg_color', current_config['immich'].get('overlay_bg_color', 'black')
+                ),
+                'overlay_text_color': request.form.get(
+                    'overlay_text_color', current_config['immich'].get('overlay_text_color', 'white')
+                ),
+                'overlay_border_color': request.form.get(
+                    'overlay_border_color', current_config['immich'].get('overlay_border_color', 'white')
+                ),
+                'overlay_stroke_width': int(
+                    request.form.get('overlay_stroke_width', current_config['immich'].get('overlay_stroke_width', 2))
+                ),
+                'overlay_font_size': int(
+                    request.form.get('overlay_font_size', current_config['immich'].get('overlay_font_size', 26))
+                ),
             }
         }
 

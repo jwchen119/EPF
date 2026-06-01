@@ -480,6 +480,66 @@
                         <option value="bottomRight"  {% if config['immich'].get('date_overlay_position', 'bottomRight') == 'bottomRight' %}selected{% endif %}>Bottom Right</option>
                     </select>
                 </div>
+                <div class="form-group">
+                    <label for="overlay_style">Overlay Style:</label>
+                    <select id="overlay_style" name="overlay_style">
+                        <option value="background" {% if config['immich'].get('overlay_style', 'background') == 'background' %}selected{% endif %}>Background (filled)</option>
+                        <option value="outline"    {% if config['immich'].get('overlay_style', 'background') == 'outline'    %}selected{% endif %}>Outline (stroke)</option>
+                    </select>
+                    <div class="small-text">Background draws a filled rectangle; Outline draws a colored stroke around the text.</div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_bg_color">Background Color:</label>
+                    <select id="overlay_bg_color" name="overlay_bg_color">
+                        <option value="black"  {% if config['immich'].get('overlay_bg_color', 'black') == 'black'  %}selected{% endif %}>Black</option>
+                        <option value="white"  {% if config['immich'].get('overlay_bg_color', 'black') == 'white'  %}selected{% endif %}>White</option>
+                        <option value="yellow" {% if config['immich'].get('overlay_bg_color', 'black') == 'yellow' %}selected{% endif %}>Yellow</option>
+                        <option value="red"    {% if config['immich'].get('overlay_bg_color', 'black') == 'red'    %}selected{% endif %}>Red</option>
+                        <option value="blue"   {% if config['immich'].get('overlay_bg_color', 'black') == 'blue'   %}selected{% endif %}>Blue</option>
+                        <option value="green"  {% if config['immich'].get('overlay_bg_color', 'black') == 'green'  %}selected{% endif %}>Green</option>
+                    </select>
+                    <div class="small-text">Used in Background style only.</div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_text_color">Text Color:</label>
+                    <select id="overlay_text_color" name="overlay_text_color">
+                        <option value="black"  {% if config['immich'].get('overlay_text_color', 'white') == 'black'  %}selected{% endif %}>Black</option>
+                        <option value="white"  {% if config['immich'].get('overlay_text_color', 'white') == 'white'  %}selected{% endif %}>White</option>
+                        <option value="yellow" {% if config['immich'].get('overlay_text_color', 'white') == 'yellow' %}selected{% endif %}>Yellow</option>
+                        <option value="red"    {% if config['immich'].get('overlay_text_color', 'white') == 'red'    %}selected{% endif %}>Red</option>
+                        <option value="blue"   {% if config['immich'].get('overlay_text_color', 'white') == 'blue'   %}selected{% endif %}>Blue</option>
+                        <option value="green"  {% if config['immich'].get('overlay_text_color', 'white') == 'green'  %}selected{% endif %}>Green</option>
+                    </select>
+                    <div class="small-text">Used in both styles.</div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_border_color">Border (Stroke) Color:</label>
+                    <select id="overlay_border_color" name="overlay_border_color">
+                        <option value="black"  {% if config['immich'].get('overlay_border_color', 'white') == 'black'  %}selected{% endif %}>Black</option>
+                        <option value="white"  {% if config['immich'].get('overlay_border_color', 'white') == 'white'  %}selected{% endif %}>White</option>
+                        <option value="yellow" {% if config['immich'].get('overlay_border_color', 'white') == 'yellow' %}selected{% endif %}>Yellow</option>
+                        <option value="red"    {% if config['immich'].get('overlay_border_color', 'white') == 'red'    %}selected{% endif %}>Red</option>
+                        <option value="blue"   {% if config['immich'].get('overlay_border_color', 'white') == 'blue'   %}selected{% endif %}>Blue</option>
+                        <option value="green"  {% if config['immich'].get('overlay_border_color', 'white') == 'green'  %}selected{% endif %}>Green</option>
+                    </select>
+                    <div class="small-text">Used in Outline style only.</div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_font_size">Font Size:</label>
+                    <div class="slider-container">
+                        <input type="range" id="overlay_font_size" name="overlay_font_size" min="16" max="48" step="1"
+                            value="{{ config['immich'].get('overlay_font_size', 26) }}" oninput="updateSliderValue(this)">
+                        <output class="slider-value">{{ config['immich'].get('overlay_font_size', 26) }}</output>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_stroke_width">Stroke Width (Outline only):</label>
+                    <div class="slider-container">
+                        <input type="range" id="overlay_stroke_width" name="overlay_stroke_width" min="1" max="5" step="1"
+                            value="{{ config['immich'].get('overlay_stroke_width', 2) }}" oninput="updateSliderValue(this)">
+                        <output class="slider-value">{{ config['immich'].get('overlay_stroke_width', 2) }}</output>
+                    </div>
+                </div>
             </div>
 
             <div class="card">

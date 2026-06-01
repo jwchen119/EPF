@@ -61,3 +61,18 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md — Rewrite README.md end-to-end: new header/Features/Components/pin map (Task 1) + Installation/Firmware/Development/License with ghcr.io + compose + Arduino libs + CI/CD (Task 2)
+
+### Phase 6: Text customization: colors, styles, and border mode
+
+**Goal:** Make the timestamp overlay's visual appearance configurable: overlay style (filled background vs. outline/stroke), background color, text color, border/stroke color, stroke thickness, and font size — all selected from the 6-color T133A01 palette and exposed in the web Configuration UI, persisted to config.yaml. Defaults preserve the exact current visual so existing deployments see zero change until configured.
+
+**Requirements:** TC-01, TC-02, TC-03, TC-04, TC-05, TC-06, TC-07, TC-08, TC-09
+
+**Depends on:** Phase 5
+
+**Plans:** 2/3 plans executed
+
+Plans:
+- [x] 06-01-PLAN.md — Wave 0 (TDD RED): tests/test_overlay_customization.py with 9 failing contract tests (OVERLAY_COLORS, extended draw_date_overlay signature, bg/outline modes, config keys)
+- [x] 06-02-PLAN.md — TDD GREEN: add OVERLAY_COLORS dict + 6 DEFAULT_CONFIG keys + globals; extend draw_date_overlay() with style/colors/stroke (TC-01..TC-07)
+- [x] 06-03-PLAN.md — Wire update_app_config + POST handler + scale_img_in_memory call site + settings.html controls (TC-08, TC-09)
