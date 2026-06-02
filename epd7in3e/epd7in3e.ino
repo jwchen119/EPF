@@ -109,6 +109,7 @@ private:
       digitalWrite(ADC_EN_PIN, LOW);
       bool avgOnBattery = (avgBatteryMv > 1500);
       int headerValue = avgOnBattery ? avgBatteryMv : 0;
+      http.setAuthorization("admin", APP_PASSWORD);
       http.addHeader("batteryCap", String(headerValue));
       Serial.printf("HTTP batteryCap header: %d mV (onBattery=%s)\n",
                     headerValue, avgOnBattery ? "true" : "false");
@@ -144,6 +145,7 @@ private:
               sleepHttp.begin(*sleepBasicClient, sleepUrl);
             }
 
+            sleepHttp.setAuthorization("admin", APP_PASSWORD);
             sleepHttp.addHeader("Accept", "application/json");
             int sleepHttpCode = sleepHttp.GET();
 

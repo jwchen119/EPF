@@ -115,6 +115,18 @@ Settings exposed in the UI (matching the keys in `DEFAULT_CONFIG`):
 | `date_overlay_enabled` | Show date overlay | `false` |
 | `date_overlay_position` | One of the 9 anchor positions | `bottomRight` |
 
+### Access Control
+
+By default the app is open to anyone on your network. To require a password, set the
+`APP_PASSWORD` environment variable (uncomment the line in `compose.yml`, or add it to a
+`.env` file). When set, every route prompts for HTTP Basic Auth:
+
+- **Username:** `admin` (fixed)
+- **Password:** the value of `APP_PASSWORD`
+
+Leave `APP_PASSWORD` empty or unset to keep the app open (backward compatible). The ESP32
+firmware must use the same password — see the Firmware section.
+
 ### Local photos
 
 Drop image files into the `./local_photos/` directory on the host (mapped to `/data/local_photos` inside the container). Supported extensions: `.jpg`, `.jpeg`, `.bmp`, `.heic`, `.dng`, `.arw`, `.cr2`, `.nef`, `.raw`. When at least one file is present, the local source takes priority over Immich.
@@ -154,6 +166,10 @@ Install these from **Tools → Manage Libraries…**:
 - **ArduinoJson** (Benoit Blanchon)
 
 ### Build and flash
+
+> **Auth:** If you set `APP_PASSWORD` on the server, set the matching `APP_PASSWORD` constant
+> in `epd7in3e/config.h` before flashing so the device can authenticate. Leave it `""` if the
+> server has no password.
 
 1. Open `epd7in3e/epd7in3e.ino`
 2. Click **Verify** to confirm the toolchain finds all libraries, then **Upload**.

@@ -5,6 +5,7 @@ services:
       - "15151:5000"
     environment:
       - IMMICH_API_KEY=your-api-key-here
+      # - APP_PASSWORD=your-password-here   # Uncomment and set to enable HTTP Basic Auth (username: admin)
 
     volumes:
       # Immich photo cache + tracking.txt

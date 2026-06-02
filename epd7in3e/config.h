@@ -32,6 +32,8 @@
 #define HTTP_CHUNK_SIZE 16384U  // HTTP read chunk size (frame buffer is in PSRAM)
 
 #define SERVER_BASE_URL "http://server.ip:15001"
+// HTTP Basic Auth password (must match server APP_PASSWORD env var). Empty = no auth.
+#define APP_PASSWORD ""
 #define PREFERENCES_SLEEP_TIME_KEY "refresh_rate"
 #define PREFERENCES_LAST_SLEEP_TIME "last_sleep"
 #define PREFERENCES_CONNECT_API_RETRY_COUNT "retry_count"

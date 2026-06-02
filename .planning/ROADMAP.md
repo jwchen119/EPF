@@ -91,3 +91,18 @@ Plans:
 - [x] 07-01-PLAN.md — Wave 0 (TDD RED): tests/test_geo_overlay.py with 12 failing contract tests + synthetic_gps_image/mock_geo_cache_dir fixtures (GEO-01..GEO-12)
 - [x] 07-02-PLAN.md — TDD GREEN: add geopy==2.4.1; implement extract_gps_from_exif() + reverse_geocode_cached() (JSON cache) + parse_photo_location() (GEO-01..GEO-08)
 - [x] 07-03-PLAN.md — Integration: extend scale_img_in_memory() with immich_exif_raw + geo/date fallback assembly; wire serve_immich_image; static settings UI note (GEO-09..GEO-12)
+
+### Phase 8: Auth — Secure access to the app with opt-in HTTP Basic Auth
+
+**Goal:** Add opt-in HTTP Basic Auth to the Flask app so it is not open to anyone on the local network. A `require_auth` decorator protects all four routes (`/`, `/setting`, `/download`, `/sleep`): when `APP_PASSWORD` is set, requests need username `admin` + the password (constant-time compared via `hmac.compare_digest`); missing/wrong credentials get `401` + `WWW-Authenticate: Basic realm="EPF"`, triggering the browser's native dialog. When `APP_PASSWORD` is empty/absent, all routes stay open (backward compatible). The ESP32 firmware sends matching credentials via `HTTPClient.setAuthorization("admin", APP_PASSWORD)` on its `/download` and `/sleep` calls. Documented in `compose.yml`, `.env.example`, and README.
+
+**Requirements:** AUTH-01, AUTH-02, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, AUTH-08, AUTH-09, AUTH-10
+
+**Depends on:** Phase 7
+
+**Plans:** 1/3 plans executed
+
+Plans:
+- [x] 08-01-PLAN.md — Wave 0 (TDD RED): tests/test_auth.py with 8 failing contract tests (AUTH-01..AUTH-08)
+- [x] 08-02-PLAN.md — TDD GREEN: require_auth decorator + APP_PASSWORD + protect 4 routes; document in compose.yml/.env.example/README (AUTH-01..05, 07, 08)
+- [ ] 08-03-PLAN.md — Firmware setAuthorization() on http + sleepHttp clients + config.h constant; human verify browser dialog + device fetch (AUTH-06, AUTH-09, AUTH-10)

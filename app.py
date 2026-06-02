@@ -1,17 +1,19 @@
 # -*- coding:utf8 -*-
+import hmac
 import io
 import json
 import os
 import random
 import threading
 from datetime import datetime, timedelta
+from functools import wraps
 
 import numpy as np
 import rawpy
 import requests
 import yaml
 from dotenv import load_dotenv
-from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, jsonify, make_response, redirect, render_template, request, send_file, url_for
 from geopy.exc import GeocoderServiceError, GeocoderTimedOut
 from geopy.geocoders import Nominatim
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
@@ -327,6 +329,7 @@ photodir = os.getenv('IMMICH_PHOTO_DEST', os.path.join(base_dir, 'photos'))
 tracking_file = os.path.join(photodir, 'tracking.txt')
 localdir = os.getenv('LOCAL_PHOTO_DIR', os.path.join(base_dir, 'local_photos'))
 config_file = os.getenv('CONFIG_FILE', os.path.join(base_dir, 'config.yaml'))
+APP_PASSWORD = os.getenv('APP_PASSWORD', '')
 
 # Ensure directory exists
 os.makedirs(photodir, exist_ok=True)
@@ -368,6 +371,28 @@ OVERLAY_COLORS = {
 
 last_battery_voltage = 0
 last_battery_update = 0
+
+
+def require_auth(f):
+    """Enforce HTTP Basic Auth when APP_PASSWORD is set.
+
+    Opt-in: when APP_PASSWORD is empty/absent, all requests pass through.
+    Returns 401 + WWW-Authenticate header on missing or wrong credentials.
+    """
+
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not APP_PASSWORD:
+            return f(*args, **kwargs)
+        auth = request.authorization
+        if auth and auth.username == 'admin' and hmac.compare_digest(auth.password or '', APP_PASSWORD):
+            return f(*args, **kwargs)
+        app.logger.warning('Auth failed from %s', request.remote_addr)
+        response = make_response('Unauthorized', 401)
+        response.headers['WWW-Authenticate'] = 'Basic realm="EPF"'
+        return response
+
+    return decorated
 
 
 def load_downloaded_images():
@@ -822,6 +847,7 @@ def calculate_battery_percentage(voltage):
 
 
 @app.route('/setting', methods=['GET', 'POST'])
+@require_auth
 def settings():
     global current_config, last_battery_voltage, last_battery_update
 
@@ -926,6 +952,7 @@ def settings():
 
 
 @app.route('/')
+@require_auth
 def index():
     return redirect(url_for('settings'))
 
@@ -1098,6 +1125,7 @@ def serve_immich_image():
 
 
 @app.route('/download', methods=['GET'])
+@require_auth
 def process_and_download():
     global last_battery_voltage, last_battery_update
 
@@ -1130,6 +1158,7 @@ def process_and_download():
 
 
 @app.route('/sleep', methods=['GET'])
+@require_auth
 def get_sleep_duration():
     # Use system time instead of NTP sync
     current_time = datetime.now()
