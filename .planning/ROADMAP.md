@@ -106,3 +106,18 @@ Plans:
 - [x] 08-01-PLAN.md — Wave 0 (TDD RED): tests/test_auth.py with 8 failing contract tests (AUTH-01..AUTH-08)
 - [x] 08-02-PLAN.md — TDD GREEN: require_auth decorator + APP_PASSWORD + protect 4 routes; document in compose.yml/.env.example/README (AUTH-01..05, 07, 08)
 - [ ] 08-03-PLAN.md — Firmware setAuthorization() on http + sleepHttp clients + config.h constant; human verify browser dialog + device fetch (AUTH-06, AUTH-09, AUTH-10)
+
+### Phase 9: Blurred background behind image when using fit-width or fit-height modes
+
+**Goal:** Replace the plain white letterbox/pillarbox bars in fit mode with a fill-scaled, heavily Gaussian-blurred version of the same photo as the background layer. The sharp fit-scaled photo is pasted centered on top. Implemented in cpy_fallback.py (canonical pure-Python) and mirrored into cpy.pyx (Cython production path). A new blur_radius config key (default 30) is persisted to config.yaml and exposed via a slider in the settings UI.
+
+**Requirements:** BG-01, BG-02, BG-03, BG-04, BG-05, BG-06
+
+**Depends on:** Phase 8
+
+**Plans:** 3/3 plans complete
+
+Plans:
+- [x] 09-01-PLAN.md — Wave 1 (TDD RED): tests/test_blur_background.py with 6 failing contract tests (BG-01..BG-06)
+- [x] 09-02-PLAN.md — Wave 2 (TDD GREEN): blur-fill fit branch in cpy_fallback.py + blur_radius wired through app.py (DEFAULT_CONFIG, update_app_config, scale_img_in_memory, POST handler)
+- [x] 09-03-PLAN.md — Wave 3: mirror blur logic into cpy.pyx + blur_radius slider in settings.html + human visual verify checkpoint

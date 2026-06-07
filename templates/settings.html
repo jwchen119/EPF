@@ -425,6 +425,16 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="blur_radius">Background Blur Radius (Fit mode only):</label>
+                    <div class="slider-container">
+                        <input type="range" id="blur_radius" name="blur_radius" min="5" max="80" step="5"
+                            value="{{ config['immich'].get('blur_radius', 30) }}" oninput="updateSliderValue(this)">
+                        <output class="slider-value">{{ config['immich'].get('blur_radius', 30) }}</output>
+                    </div>
+                    <div class="small-text">Higher values produce a smoother background. Only applies when Display Mode is Fit.</div>
+                </div>
+
+                <div class="form-group">
                     <label for="image_order">Image Display Order:</label>
                     <select id="image_order" name="image_order">
                         <option value="random" {% if config['immich']['image_order']=='random' %}selected{% endif %}>
@@ -727,6 +737,10 @@
             document.getElementById('sleep_end_hour').value = '6';
             document.getElementById('sleep_end_minute').value = '0';
             document.getElementById('wakeup_interval').value = '30';
+
+            const blurSlider = document.getElementById('blur_radius');
+            blurSlider.value = '30';
+            blurSlider.nextElementSibling.textContent = '30';
 
             showNotification('Settings reset to default successfully!');
             document.getElementById('confirmModal').style.display = 'none';

@@ -79,7 +79,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install pytest cython
+
+      - name: Build Cython extension
+        run: |
+          sudo apt-get install -y --no-install-recommends python3-dev gcc
+          cython cpy.pyx && \
+          gcc -shared -fPIC -O2 \
+              $(python3-config --includes) \
+              -I$(python3 -c "import numpy; print(numpy.get_include())") \
+              cpy.c -o cpy.so && \
+          rm cpy.c || echo "Cython build failed — pure-Python fallback will be used"
 
       - name: Run pytest
         run: pytest tests/ -v

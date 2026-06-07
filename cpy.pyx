@@ -7,7 +7,7 @@ cimport cython
 
 from libc.math cimport pow
 #import time
-from PIL import Image
+from PIL import Image, ImageFilter
 from libc.stdint cimport uint16_t, uint32_t
 
 # Constants
@@ -58,7 +58,7 @@ cdef double gamma_linear(double inp) nogil:
         return pow((inp + 0.055) / (1.0 + 0.055), 2.4)
     return inp / 12.92
 
-def load_scaled(image, angle, display_mode='fit'):
+def load_scaled(image, angle, display_mode='fit', blur_radius=30):
     if isinstance(image, str):
         img = Image.open(image)
     else:
@@ -88,24 +88,48 @@ def load_scaled(image, angle, display_mode='fit'):
             top = (new_height - EPD_H) // 2
             img = img.crop((0, top, EPD_W, top + EPD_H))
     else:
-        # 原有的符合螢幕寬度模式
+        # fit branch — blurred fill background
         orig_ratio = img.width / img.height
         epd_ratio = EPD_W / EPD_H
-        
+        blur_radius = max(1, min(100, int(blur_radius)))
+
+        # Step 1: compute fill-scale dimensions for background
+        if orig_ratio > epd_ratio:
+            bg_height = EPD_H
+            bg_width = int(bg_height * orig_ratio)
+        else:
+            bg_width = EPD_W
+            bg_height = int(bg_width / orig_ratio)
+
+        # Step 2: resize to fill-scale (guarantee full coverage)
+        bg_img = img.resize(
+            (max(bg_width, EPD_W), max(bg_height, EPD_H)),
+            Image.LANCZOS,
+        )
+
+        # Step 3: center-crop to exact display size
+        left = (bg_img.width - EPD_W) // 2
+        top = (bg_img.height - EPD_H) // 2
+        bg_img = bg_img.crop((left, top, left + EPD_W, top + EPD_H))
+
+        # Step 4: apply Gaussian blur
+        bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+        # Step 5: fit-scale the sharp image
         if orig_ratio > epd_ratio:
             new_width = EPD_W
             new_height = int(new_width / orig_ratio)
         else:
             new_height = EPD_H
             new_width = int(new_height * orig_ratio)
-        
-        img = img.resize((new_width, new_height), Image.LANCZOS)
-        
-        bg = Image.new('RGB', (EPD_W, EPD_H), (255, 255, 255))
+
+        sharp_img = img.resize((new_width, new_height), Image.LANCZOS)
+
+        # Step 6: paste sharp image centered onto blurred background
         offset = ((EPD_W - new_width) // 2, (EPD_H - new_height) // 2)
-        bg.paste(img, offset)
-        return bg
-    
+        bg_img.paste(sharp_img, offset)
+        return bg_img
+
     return img
 
 def convert_image(input_image, preview_path=None, dithering_strength=1.0):

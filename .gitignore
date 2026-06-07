@@ -19,3 +19,5 @@ config.yaml
 *.pdf
 test-images/
 geo_cache.json
+*.so
+*.c

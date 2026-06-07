@@ -61,6 +61,7 @@ DEFAULT_CONFIG = {
         'overlay_stroke_width': 2,  # D-09/D-11/D-14: stroke px (outline mode), int
         'overlay_font_size': 26,  # D-12/D-13/D-14: font px, int
         'overlay_language': 'en',  # 'en' | 'de' — Nominatim reverse-geocode language (GEO-LANG)
+        'blur_radius': 30,  # px, int — GaussianBlur radius for fit mode blurred background
     }
 }
 
@@ -321,6 +322,7 @@ overlay_border_color = DEFAULT_CONFIG['immich']['overlay_border_color']
 overlay_stroke_width = DEFAULT_CONFIG['immich']['overlay_stroke_width']
 overlay_font_size = DEFAULT_CONFIG['immich']['overlay_font_size']
 overlay_language = DEFAULT_CONFIG['immich']['overlay_language']
+blur_radius = DEFAULT_CONFIG['immich']['blur_radius']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
@@ -509,7 +511,7 @@ def scale_img_in_memory(
     # # calculate position
     # paste_x = (target_width - new_width) // 2
     # paste_y = (target_height - new_height) // 2
-    img = load_scaled(image, rotation, display_mode)
+    img = load_scaled(image, rotation, display_mode, blur_radius=blur_radius)
     # Enhance color and contrast
     enhanced_img = ImageEnhance.Color(img).enhance(img_enhanced)
     enhanced_img = ImageEnhance.Contrast(enhanced_img).enhance(img_contrast)
@@ -738,7 +740,8 @@ def update_app_config(new_config):
         overlay_border_color, \
         overlay_stroke_width, \
         overlay_font_size, \
-        overlay_language
+        overlay_language, \
+        blur_radius
 
     current_config = new_config
 
@@ -779,6 +782,7 @@ def update_app_config(new_config):
     overlay_stroke_width = int(new_config['immich'].get('overlay_stroke_width', 2))
     overlay_font_size = int(new_config['immich'].get('overlay_font_size', 26))
     overlay_language = new_config['immich'].get('overlay_language', 'en')
+    blur_radius = int(new_config['immich'].get('blur_radius', 30))
 
     print(
         f'Configuration updated: URL = {url}, Album = {albumname}, angle = {rotationAngle}, enhance = {img_enhanced}, contrast = {img_contrast}, strength = {strength}, display_mode = {display_mode}, image_order = {image_order}'
@@ -915,6 +919,7 @@ def settings():
                 'overlay_language': request.form.get(
                     'overlay_language', current_config['immich'].get('overlay_language', 'en')
                 ),
+                'blur_radius': int(request.form.get('blur_radius', current_config['immich'].get('blur_radius', 30))),
             }
         }
 
