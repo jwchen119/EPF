@@ -135,3 +135,14 @@ Plans:
 Plans:
 - [ ] 10-01-PLAN.md — Wave 1 (TDD): binary image transport server-side — convert_to_binary_in_memory() + octet-stream /download responses; contract tests BATT-01..04
 - [ ] 10-02-PLAN.md — Wave 2 (firmware): gated boot delay + CPU 80 MHz + WiFi TX 8.5 dBm + binary frame decode + GPIO isolation; human-verify on device (BATT-05, BATT-06)
+
+## Backlog
+
+### Phase 999.1: Set SPI/display GPIO pins to INPUT before deep sleep (BACKLOG)
+
+**Goal:** [Captured for future planning] Set SPI and display control pins (DC GPIO10, CS GPIO44/41, RST GPIO38, SCLK GPIO8, MOSI GPIO9) to INPUT mode before `esp_deep_sleep_start()` in `hibernate()` to eliminate leakage current through e-paper protection diodes. Non-RTC pins cannot use `rtc_gpio_isolate()` — use `pinMode(pin, INPUT)` or `gpio_reset_pin()` instead. Measure impact first: check whether the e-paper `Sleep()` driver call already tri-states these lines, which may make this a no-op.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
