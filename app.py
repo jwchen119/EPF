@@ -638,6 +638,24 @@ def convert_to_c_code_in_memory(image_data):
     return output_bytes
 
 
+def convert_to_binary_in_memory(image_data):
+    """Convert image to raw binary nibble frame — T133A01 4bpp, 960000 bytes."""
+    pixels = np.array(image_data)
+    indices = depalette_image(pixels, palette)
+    nibble_map = [0xF, 0x0, 0xB, 0x6, 0xD, 0x2]
+    height, width = indices.shape
+    bytes_array = [
+        (nibble_map[indices[y, x]] << 4) | nibble_map[indices[y, x + 1]]
+        if x + 1 < width
+        else (nibble_map[indices[y, x]] << 4)
+        for y in range(height)
+        for x in range(0, width, 2)
+    ]
+    output_bytes = io.BytesIO(bytes(bytes_array))
+    output_bytes.seek(0)
+    return output_bytes
+
+
 def convert_raw_or_dng_to_jpg(input_file_path, output_dir):
     """Convert RAW or DNG files to JPG using rawpy."""
     with rawpy.imread(input_file_path) as raw:
@@ -1034,10 +1052,15 @@ def serve_local_image():
 
     processed_image = scale_img_in_memory(image)
     processed_image.seek(0)
-    c_code = convert_to_c_code_in_memory(Image.open(processed_image))
+    frame = convert_to_binary_in_memory(Image.open(processed_image))
 
     stem = os.path.splitext(filename)[0]
-    return send_file(c_code, mimetype='text/plain', as_attachment=True, download_name=f'image_{stem}.c')
+    return send_file(
+        frame,
+        mimetype='application/octet-stream',
+        as_attachment=True,
+        download_name=f'image_{stem}.bin',
+    )
 
 
 def serve_immich_image():
@@ -1124,9 +1147,14 @@ def serve_immich_image():
         immich_exif_raw=selected_image.get('exifInfo', {}),
     )
     processed_image.seek(0)
-    c_code = convert_to_c_code_in_memory(Image.open(processed_image))
+    frame = convert_to_binary_in_memory(Image.open(processed_image))
 
-    return send_file(c_code, mimetype='text/plain', as_attachment=True, download_name=f'image_{asset_id}.c')
+    return send_file(
+        frame,
+        mimetype='application/octet-stream',
+        as_attachment=True,
+        download_name=f'image_{asset_id}.bin',
+    )
 
 
 @app.route('/download', methods=['GET'])

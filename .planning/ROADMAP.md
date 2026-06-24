@@ -122,27 +122,16 @@ Plans:
 - [x] 09-02-PLAN.md — Wave 2 (TDD GREEN): blur-fill fit branch in cpy_fallback.py + blur_radius wired through app.py (DEFAULT_CONFIG, update_app_config, scale_img_in_memory, POST handler)
 - [x] 09-03-PLAN.md — Wave 3: mirror blur logic into cpy.pyx + blur_radius slider in settings.html + human visual verify checkpoint
 
-### Phase 10: Battery optimization
+### Phase 10: Battery Optimization — Binary image transport
 
-**Goal:** Reduce active-period battery drain on the XIAO ESP32-S3 firmware. Switch image transport from hex-CSV text (~2.8 MB) to raw binary (960000 bytes, application/octet-stream) on the server to cut WiFi-on time ~3x. On firmware: gate the 3 s USB-CDC boot delay on wakeup cause (skip on deep-sleep wakeups), set CPU to 80 MHz and WiFi TX power to 8.5 dBm before connecting, decode the frame as raw binary directly into PSRAM, and isolate the BAT_ADC/ADC_EN GPIOs before deep sleep. Estimated ~4.4 mAh/day saved.
+**Goal:** Cut WiFi-on time per wake cycle by switching the /download endpoint from hex-CSV text encoding (~2.8 MB) to raw binary application/octet-stream (960 KB). Saves ~0.082 mAh/cycle. Server-side: new convert_to_binary_in_memory() encoder wired into both serve functions. Firmware-side: replace hex-CSV parser with binary read.
 
-**Requirements:** BATT-01, BATT-02, BATT-03, BATT-04, BATT-05, BATT-06
+**Requirements:** BATT-01, BATT-02, BATT-03, BATT-04
 
 **Depends on:** Phase 9
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans complete
 
 Plans:
-- [ ] 10-01-PLAN.md — Wave 1 (TDD): binary image transport server-side — convert_to_binary_in_memory() + octet-stream /download responses; contract tests BATT-01..04
-- [ ] 10-02-PLAN.md — Wave 2 (firmware): gated boot delay + CPU 80 MHz + WiFi TX 8.5 dBm + binary frame decode + GPIO isolation; human-verify on device (BATT-05, BATT-06)
-
-## Backlog
-
-### Phase 999.1: Set SPI/display GPIO pins to INPUT before deep sleep (BACKLOG)
-
-**Goal:** [Captured for future planning] Set SPI and display control pins (DC GPIO10, CS GPIO44/41, RST GPIO38, SCLK GPIO8, MOSI GPIO9) to INPUT mode before `esp_deep_sleep_start()` in `hibernate()` to eliminate leakage current through e-paper protection diodes. Non-RTC pins cannot use `rtc_gpio_isolate()` — use `pinMode(pin, INPUT)` or `gpio_reset_pin()` instead. Measure impact first: check whether the e-paper `Sleep()` driver call already tri-states these lines, which may make this a no-op.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+- [x] 10-01-PLAN.md — TDD RED + GREEN: contract tests BATT-01..BATT-04 + convert_to_binary_in_memory() + binary /download responses
+- [ ] 10-02-PLAN.md — Firmware binary reader + Arduino HTTPClient binary parse changes

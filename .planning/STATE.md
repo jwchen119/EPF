@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-06-07T19:21:20.965Z"
+status: In progress
+last_updated: "2026-06-24T10:26:00.000Z"
 progress:
-  total_phases: 9
+  total_phases: 10
   completed_phases: 9
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 26
+  completed_plans: 25
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
+Phase: 10
+Plan: 02 (10-01 complete)
 
 ## Phase 1 Complete
 
@@ -81,6 +81,15 @@ Phase 01 (hardware-port) completed all 3 plans:
 - max(bg_width, EPD_W) + max(bg_height, EPD_H) guards in background resize prevent edge artifacts from undersize background (09-02)
 - cpy.pyx retains Image.LANCZOS (not Image.Resampling.LANCZOS) — required to avoid Cython compile errors; mirrors cpy_fallback.py logic otherwise identically (09-03)
 - blur_radius slider in settings.html uses step=5, range 5-80, default 30; reset function uses nextElementSibling.textContent pattern matching existing sliders (09-03)
+- convert_to_binary_in_memory() placed after legacy encoder; legacy kept for nibble parity test (10-01)
+- serve_local_image and serve_immich_image download_name changed to .bin; no X-Image-Format header added (deferred to 10-02)
+
+## Phase 10 Plan Status
+
+| Plan | Name | Status |
+|------|------|--------|
+| 10-01 | TDD RED + GREEN: binary transport BATT-01..BATT-04 | complete |
+| 10-02 | Firmware binary reader + Arduino HTTPClient changes | not started |
 
 ## Phase 9 Plan Status
 
