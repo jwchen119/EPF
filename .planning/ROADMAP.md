@@ -121,3 +121,17 @@ Plans:
 - [x] 09-01-PLAN.md — Wave 1 (TDD RED): tests/test_blur_background.py with 6 failing contract tests (BG-01..BG-06)
 - [x] 09-02-PLAN.md — Wave 2 (TDD GREEN): blur-fill fit branch in cpy_fallback.py + blur_radius wired through app.py (DEFAULT_CONFIG, update_app_config, scale_img_in_memory, POST handler)
 - [x] 09-03-PLAN.md — Wave 3: mirror blur logic into cpy.pyx + blur_radius slider in settings.html + human visual verify checkpoint
+
+### Phase 10: Battery optimization
+
+**Goal:** Reduce active-period battery drain on the XIAO ESP32-S3 firmware. Switch image transport from hex-CSV text (~2.8 MB) to raw binary (960000 bytes, application/octet-stream) on the server to cut WiFi-on time ~3x. On firmware: gate the 3 s USB-CDC boot delay on wakeup cause (skip on deep-sleep wakeups), set CPU to 80 MHz and WiFi TX power to 8.5 dBm before connecting, decode the frame as raw binary directly into PSRAM, and isolate the BAT_ADC/ADC_EN GPIOs before deep sleep. Estimated ~4.4 mAh/day saved.
+
+**Requirements:** BATT-01, BATT-02, BATT-03, BATT-04, BATT-05, BATT-06
+
+**Depends on:** Phase 9
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 10-01-PLAN.md — Wave 1 (TDD): binary image transport server-side — convert_to_binary_in_memory() + octet-stream /download responses; contract tests BATT-01..04
+- [ ] 10-02-PLAN.md — Wave 2 (firmware): gated boot delay + CPU 80 MHz + WiFi TX 8.5 dBm + binary frame decode + GPIO isolation; human-verify on device (BATT-05, BATT-06)
