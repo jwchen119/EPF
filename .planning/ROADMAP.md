@@ -121,3 +121,17 @@ Plans:
 - [x] 09-01-PLAN.md — Wave 1 (TDD RED): tests/test_blur_background.py with 6 failing contract tests (BG-01..BG-06)
 - [x] 09-02-PLAN.md — Wave 2 (TDD GREEN): blur-fill fit branch in cpy_fallback.py + blur_radius wired through app.py (DEFAULT_CONFIG, update_app_config, scale_img_in_memory, POST handler)
 - [x] 09-03-PLAN.md — Wave 3: mirror blur logic into cpy.pyx + blur_radius slider in settings.html + human visual verify checkpoint
+
+### Phase 10: Battery Optimization — Binary image transport
+
+**Goal:** Cut WiFi-on time per wake cycle by switching the /download endpoint from hex-CSV text encoding (~2.8 MB) to raw binary application/octet-stream (960 KB). Saves ~0.082 mAh/cycle. Server-side: new convert_to_binary_in_memory() encoder wired into both serve functions. Firmware-side: replace hex-CSV parser with binary read.
+
+**Requirements:** BATT-01, BATT-02, BATT-03, BATT-04
+
+**Depends on:** Phase 9
+
+**Plans:** 1/2 plans complete
+
+Plans:
+- [x] 10-01-PLAN.md — TDD RED + GREEN: contract tests BATT-01..BATT-04 + convert_to_binary_in_memory() + binary /download responses
+- [ ] 10-02-PLAN.md — Firmware binary reader + Arduino HTTPClient binary parse changes
