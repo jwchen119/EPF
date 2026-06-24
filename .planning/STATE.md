@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: In progress
-last_updated: "2026-06-24T10:26:00.000Z"
+status: Ready to execute
+last_updated: "2026-06-24T10:26:35.415Z"
 progress:
-  total_phases: 10
+  total_phases: 12
   completed_phases: 9
   total_plans: 26
-  completed_plans: 25
+  completed_plans: 24
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 10
-Plan: 02 (10-01 complete)
+Phase: 10 (battery-optimization) — EXECUTING
+Plan: 2 of 2
 
 ## Phase 1 Complete
 
@@ -81,15 +81,6 @@ Phase 01 (hardware-port) completed all 3 plans:
 - max(bg_width, EPD_W) + max(bg_height, EPD_H) guards in background resize prevent edge artifacts from undersize background (09-02)
 - cpy.pyx retains Image.LANCZOS (not Image.Resampling.LANCZOS) — required to avoid Cython compile errors; mirrors cpy_fallback.py logic otherwise identically (09-03)
 - blur_radius slider in settings.html uses step=5, range 5-80, default 30; reset function uses nextElementSibling.textContent pattern matching existing sliders (09-03)
-- convert_to_binary_in_memory() placed after legacy encoder; legacy kept for nibble parity test (10-01)
-- serve_local_image and serve_immich_image download_name changed to .bin; no X-Image-Format header added (deferred to 10-02)
-
-## Phase 10 Plan Status
-
-| Plan | Name | Status |
-|------|------|--------|
-| 10-01 | TDD RED + GREEN: binary transport BATT-01..BATT-04 | complete |
-| 10-02 | Firmware binary reader + Arduino HTTPClient changes | not started |
 
 ## Phase 9 Plan Status
 
@@ -138,3 +129,4 @@ Phase 01 (hardware-port) completed all 3 plans:
 - Phase 7 added: Geolocation overlay from image metadata — extend overlay to show rough location from EXIF/Immich API; fall back to timestamp if no geo info present
 - Phase 8 added: Auth — secure access to the app so it's not simply open in the local network without any access control
 - Phase 9 added: Blurred background behind image when using fit-width or fit-height modes
+- Phase 10 added: Battery optimization — verify firmware analysis findings and plan power optimizations (GPIO parking, binary image transport, wake-time reduction, WiFi/CPU tuning)
