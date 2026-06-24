@@ -394,7 +394,9 @@ public:
     // initialize preferences
     preferences.begin("data", true);
 
+    setCpuFrequencyMhz(CPU_FREQ_MHZ);   // 240->80 MHz before WiFi connect
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_TX_POWER);     // LAN-adequate 8.5 dBm
 
     // Check configuration button
     if (shouldEnterConfigMode())
@@ -531,16 +533,23 @@ EpaperManager epaperManager;
 void setup()
 {
   Serial.begin(115200);
-  delay(3000); // wait for USB-CDC serial monitor to connect
   // KNOWN HARDWARE LIMITATION (BV-05, D-12/D-13/D-14):
   // The green charge LEDs (D5, D16 on EE02 board) are driven by the
   // BQ24070 PMIC's STAT1/STAT2 open-drain outputs and are NOT connected
   // to any XIAO GPIO. When no battery is present the PMIC enters a
   // no-battery fault state and the LEDs blink. This cannot be suppressed
   // from firmware. Accepted as a hardware-only behavior.
-  
-  // Determine wake up reason
+
+  // Determine wake up reason BEFORE the serial-monitor delay so production
+  // deep-sleep wakeups skip the 3 s wait (saves ~0.056 mAh per cycle).
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool isDevelopmentBoot = (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER &&
+                            wakeup_reason != ESP_SLEEP_WAKEUP_EXT1);
+  if (isDevelopmentBoot) {
+    delay(3000); // cold boot/reset: wait for USB-CDC serial monitor to enumerate
+  } else {
+    delay(50);   // production wakeup: minimal USB-CDC settle time
+  }
 
   if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {
