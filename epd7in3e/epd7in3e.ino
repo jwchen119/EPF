@@ -243,55 +243,21 @@ private:
       return false;
     }
     size_t frame_offset = 0;
-    const size_t FRAME_SIZE = 1200 * 1600 / 2;
+    const size_t FRAME_SIZE = 1200 * 1600 / 2; // 960000 bytes
 
-    // Allocate HTTP read chunk buffer on heap
-    uint8_t* chunk_buf = (uint8_t*)malloc(HTTP_CHUNK_SIZE);
-    if (!chunk_buf) {
-      Serial.println("Chunk buffer allocation failed");
-      free(frame_buf);
-      return false;
-    }
-
-    // Stream hex-CSV response into frame_buf
-    String hexBuffer = "";
-    int bytesRead = 0;
-
-    while (stream.connected() && bytesRead < contentLength) {
+    // Stream raw binary directly into the PSRAM frame buffer (binary transport — plan 10-01).
+    size_t totalRead = 0;
+    while (stream.connected() && totalRead < FRAME_SIZE) {
       int available = stream.available();
       if (available > 0) {
-        int toRead = min(available, (int)HTTP_CHUNK_SIZE);
-        int read = stream.readBytes(chunk_buf, toRead);
-        bytesRead += read;
-
-        for (int i = 0; i < read; i++) {
-          char c = (char)chunk_buf[i];
-          if (isDelimiter(c)) {
-            if (!hexBuffer.isEmpty()) {
-              uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), NULL, 16);
-              if (frame_offset < FRAME_SIZE) {
-                frame_buf[frame_offset++] = byteValue;
-              }
-              hexBuffer = "";
-            }
-          } else {
-            hexBuffer += c;
-          }
-        }
+        size_t toRead = min((size_t)available, FRAME_SIZE - totalRead);
+        int read = stream.readBytes(frame_buf + totalRead, (int)toRead);
+        if (read > 0) totalRead += (size_t)read;
       } else {
         delay(1);
       }
     }
-
-    // Handle any remaining hex in buffer
-    if (!hexBuffer.isEmpty()) {
-      uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), NULL, 16);
-      if (frame_offset < FRAME_SIZE) {
-        frame_buf[frame_offset++] = byteValue;
-      }
-    }
-
-    free(chunk_buf);
+    frame_offset = totalRead;
 
     if (frame_offset != FRAME_SIZE) {
       Serial.printf("Warning: expected %d bytes, received %d\n", (int)FRAME_SIZE, (int)frame_offset);
@@ -329,6 +295,8 @@ private:
     Serial.printf("Battery power: entering deep sleep for %d s\n", sleep_interval);
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+    rtc_gpio_isolate(GPIO_NUM_1);  // BAT_ADC_PIN — prevent ADC leakage path in deep sleep
+    rtc_gpio_isolate(GPIO_NUM_6);  // ADC_EN_PIN — fully gate TPS22916 load switch
     fs_deinit();
     delay(50);
 
@@ -394,7 +362,9 @@ public:
     // initialize preferences
     preferences.begin("data", true);
 
+    setCpuFrequencyMhz(CPU_FREQ_MHZ);   // 240->80 MHz before WiFi connect
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_TX_POWER);     // LAN-adequate 8.5 dBm
 
     // Check configuration button
     if (shouldEnterConfigMode())
@@ -531,16 +501,23 @@ EpaperManager epaperManager;
 void setup()
 {
   Serial.begin(115200);
-  delay(3000); // wait for USB-CDC serial monitor to connect
   // KNOWN HARDWARE LIMITATION (BV-05, D-12/D-13/D-14):
   // The green charge LEDs (D5, D16 on EE02 board) are driven by the
   // BQ24070 PMIC's STAT1/STAT2 open-drain outputs and are NOT connected
   // to any XIAO GPIO. When no battery is present the PMIC enters a
   // no-battery fault state and the LEDs blink. This cannot be suppressed
   // from firmware. Accepted as a hardware-only behavior.
-  
-  // Determine wake up reason
+
+  // Determine wake up reason BEFORE the serial-monitor delay so production
+  // deep-sleep wakeups skip the 3 s wait (saves ~0.056 mAh per cycle).
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  bool isDevelopmentBoot = (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER &&
+                            wakeup_reason != ESP_SLEEP_WAKEUP_EXT1);
+  if (isDevelopmentBoot) {
+    delay(3000); // cold boot/reset: wait for USB-CDC serial monitor to enumerate
+  } else {
+    delay(50);   // production wakeup: minimal USB-CDC settle time
+  }
 
   if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {
