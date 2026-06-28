@@ -527,36 +527,45 @@
                 <div class="form-group">
                     <label for="overlay_bg_color">Background Color:</label>
                     <select id="overlay_bg_color" name="overlay_bg_color">
-                        <option value="black"  {% if config['immich'].get('overlay_bg_color', 'black') == 'black'  %}selected{% endif %}>Black</option>
-                        <option value="white"  {% if config['immich'].get('overlay_bg_color', 'black') == 'white'  %}selected{% endif %}>White</option>
-                        <option value="yellow" {% if config['immich'].get('overlay_bg_color', 'black') == 'yellow' %}selected{% endif %}>Yellow</option>
-                        <option value="red"    {% if config['immich'].get('overlay_bg_color', 'black') == 'red'    %}selected{% endif %}>Red</option>
-                        <option value="blue"   {% if config['immich'].get('overlay_bg_color', 'black') == 'blue'   %}selected{% endif %}>Blue</option>
-                        <option value="green"  {% if config['immich'].get('overlay_bg_color', 'black') == 'green'  %}selected{% endif %}>Green</option>
+                        <option value="black"      {% if config['immich'].get('overlay_bg_color', 'black') == 'black'      %}selected{% endif %}>Black</option>
+                        <option value="white"      {% if config['immich'].get('overlay_bg_color', 'black') == 'white'      %}selected{% endif %}>White</option>
+                        <option value="dark_gray"  {% if config['immich'].get('overlay_bg_color', 'black') == 'dark_gray'  %}selected{% endif %}>Dark Gray</option>
+                        <option value="gray"       {% if config['immich'].get('overlay_bg_color', 'black') == 'gray'       %}selected{% endif %}>Gray</option>
+                        <option value="light_gray" {% if config['immich'].get('overlay_bg_color', 'black') == 'light_gray' %}selected{% endif %}>Light Gray</option>
+                        <option value="yellow"     {% if config['immich'].get('overlay_bg_color', 'black') == 'yellow'     %}selected{% endif %}>Yellow</option>
+                        <option value="red"        {% if config['immich'].get('overlay_bg_color', 'black') == 'red'        %}selected{% endif %}>Red</option>
+                        <option value="blue"       {% if config['immich'].get('overlay_bg_color', 'black') == 'blue'       %}selected{% endif %}>Blue</option>
+                        <option value="green"      {% if config['immich'].get('overlay_bg_color', 'black') == 'green'      %}selected{% endif %}>Green</option>
                     </select>
                     <div class="small-text">Used in Background style only.</div>
                 </div>
                 <div class="form-group">
                     <label for="overlay_text_color">Text Color:</label>
                     <select id="overlay_text_color" name="overlay_text_color">
-                        <option value="black"  {% if config['immich'].get('overlay_text_color', 'white') == 'black'  %}selected{% endif %}>Black</option>
-                        <option value="white"  {% if config['immich'].get('overlay_text_color', 'white') == 'white'  %}selected{% endif %}>White</option>
-                        <option value="yellow" {% if config['immich'].get('overlay_text_color', 'white') == 'yellow' %}selected{% endif %}>Yellow</option>
-                        <option value="red"    {% if config['immich'].get('overlay_text_color', 'white') == 'red'    %}selected{% endif %}>Red</option>
-                        <option value="blue"   {% if config['immich'].get('overlay_text_color', 'white') == 'blue'   %}selected{% endif %}>Blue</option>
-                        <option value="green"  {% if config['immich'].get('overlay_text_color', 'white') == 'green'  %}selected{% endif %}>Green</option>
+                        <option value="black"      {% if config['immich'].get('overlay_text_color', 'white') == 'black'      %}selected{% endif %}>Black</option>
+                        <option value="white"      {% if config['immich'].get('overlay_text_color', 'white') == 'white'      %}selected{% endif %}>White</option>
+                        <option value="dark_gray"  {% if config['immich'].get('overlay_text_color', 'white') == 'dark_gray'  %}selected{% endif %}>Dark Gray</option>
+                        <option value="gray"       {% if config['immich'].get('overlay_text_color', 'white') == 'gray'       %}selected{% endif %}>Gray</option>
+                        <option value="light_gray" {% if config['immich'].get('overlay_text_color', 'white') == 'light_gray' %}selected{% endif %}>Light Gray</option>
+                        <option value="yellow"     {% if config['immich'].get('overlay_text_color', 'white') == 'yellow'     %}selected{% endif %}>Yellow</option>
+                        <option value="red"        {% if config['immich'].get('overlay_text_color', 'white') == 'red'        %}selected{% endif %}>Red</option>
+                        <option value="blue"       {% if config['immich'].get('overlay_text_color', 'white') == 'blue'       %}selected{% endif %}>Blue</option>
+                        <option value="green"      {% if config['immich'].get('overlay_text_color', 'white') == 'green'      %}selected{% endif %}>Green</option>
                     </select>
                     <div class="small-text">Used in both styles.</div>
                 </div>
                 <div class="form-group">
                     <label for="overlay_border_color">Border (Stroke) Color:</label>
                     <select id="overlay_border_color" name="overlay_border_color">
-                        <option value="black"  {% if config['immich'].get('overlay_border_color', 'white') == 'black'  %}selected{% endif %}>Black</option>
-                        <option value="white"  {% if config['immich'].get('overlay_border_color', 'white') == 'white'  %}selected{% endif %}>White</option>
-                        <option value="yellow" {% if config['immich'].get('overlay_border_color', 'white') == 'yellow' %}selected{% endif %}>Yellow</option>
-                        <option value="red"    {% if config['immich'].get('overlay_border_color', 'white') == 'red'    %}selected{% endif %}>Red</option>
-                        <option value="blue"   {% if config['immich'].get('overlay_border_color', 'white') == 'blue'   %}selected{% endif %}>Blue</option>
-                        <option value="green"  {% if config['immich'].get('overlay_border_color', 'white') == 'green'  %}selected{% endif %}>Green</option>
+                        <option value="black"      {% if config['immich'].get('overlay_border_color', 'white') == 'black'      %}selected{% endif %}>Black</option>
+                        <option value="white"      {% if config['immich'].get('overlay_border_color', 'white') == 'white'      %}selected{% endif %}>White</option>
+                        <option value="dark_gray"  {% if config['immich'].get('overlay_border_color', 'white') == 'dark_gray'  %}selected{% endif %}>Dark Gray</option>
+                        <option value="gray"       {% if config['immich'].get('overlay_border_color', 'white') == 'gray'       %}selected{% endif %}>Gray</option>
+                        <option value="light_gray" {% if config['immich'].get('overlay_border_color', 'white') == 'light_gray' %}selected{% endif %}>Light Gray</option>
+                        <option value="yellow"     {% if config['immich'].get('overlay_border_color', 'white') == 'yellow'     %}selected{% endif %}>Yellow</option>
+                        <option value="red"        {% if config['immich'].get('overlay_border_color', 'white') == 'red'        %}selected{% endif %}>Red</option>
+                        <option value="blue"       {% if config['immich'].get('overlay_border_color', 'white') == 'blue'       %}selected{% endif %}>Blue</option>
+                        <option value="green"      {% if config['immich'].get('overlay_border_color', 'white') == 'green'      %}selected{% endif %}>Green</option>
                     </select>
                     <div class="small-text">Used in Outline style only.</div>
                 </div>
