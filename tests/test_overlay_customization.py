@@ -15,12 +15,18 @@ TC-07: stroke_width=0 produces no border_color pixels distinct from text
 
 
 def test_overlay_colors_dict():
-    """TC-01: OVERLAY_COLORS has exactly 6 keys with exact RGBA tuples mirroring palette."""
+    """TC-01/CLR-01: OVERLAY_COLORS has exactly 9 keys with exact RGBA tuples."""
     from app import OVERLAY_COLORS
 
-    assert set(OVERLAY_COLORS.keys()) == {'black', 'white', 'yellow', 'red', 'blue', 'green'}
+    assert set(OVERLAY_COLORS.keys()) == {
+        'black', 'white', 'dark_gray', 'gray', 'light_gray',
+        'yellow', 'red', 'blue', 'green',
+    }
     assert OVERLAY_COLORS['black'] == (0, 0, 0, 255)
     assert OVERLAY_COLORS['white'] == (255, 255, 255, 255)
+    assert OVERLAY_COLORS['dark_gray'] == (64, 64, 64, 255)
+    assert OVERLAY_COLORS['gray'] == (128, 128, 128, 255)
+    assert OVERLAY_COLORS['light_gray'] == (192, 192, 192, 255)
     assert OVERLAY_COLORS['yellow'] == (255, 216, 0, 255)
     assert OVERLAY_COLORS['red'] == (229, 57, 53, 255)
     assert OVERLAY_COLORS['blue'] == (0, 76, 255, 255)
