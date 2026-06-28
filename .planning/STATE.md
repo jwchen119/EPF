@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-06-07T19:21:20.965Z"
+status: In Progress
+last_updated: "2026-06-28T12:23:38Z"
 progress:
-  total_phases: 9
+  total_phases: 11
   completed_phases: 9
-  total_plans: 24
-  completed_plans: 24
+  total_plans: 29
+  completed_plans: 27
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 09
-Plan: Not started
+Phase: 11
+Plan: 02
 
 ## Phase 1 Complete
 
@@ -81,6 +81,15 @@ Phase 01 (hardware-port) completed all 3 plans:
 - max(bg_width, EPD_W) + max(bg_height, EPD_H) guards in background resize prevent edge artifacts from undersize background (09-02)
 - cpy.pyx retains Image.LANCZOS (not Image.Resampling.LANCZOS) — required to avoid Cython compile errors; mirrors cpy_fallback.py logic otherwise identically (09-03)
 - blur_radius slider in settings.html uses step=5, range 5-80, default 30; reset function uses nextElementSibling.textContent pattern matching existing sliders (09-03)
+- POSITIONS lambdas accept (w, h, tw, th, p, mh, mv); center ignores both; axis-center positions use single relevant axis only (11-01)
+- margin_h=0 and margin_v=0 defaults ensure all existing draw_date_overlay() callers are unaffected — MARGIN-02 backward compat (11-01)
+
+## Phase 11 Plan Status
+
+| Plan | Name | Status |
+|------|------|--------|
+| 11-01 | TDD RED+GREEN: margin-aware POSITIONS lambdas + draw_date_overlay margin params | complete |
+| 11-02 | Config wiring, call site, and settings UI sliders | not started |
 
 ## Phase 9 Plan Status
 
