@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-last_updated: "2026-06-28T08:48:22.242Z"
+last_updated: "2026-06-28T12:00:49.066Z"
 progress:
-  total_phases: 12
+  total_phases: 14
   completed_phases: 11
   total_plans: 27
   completed_plans: 27
@@ -17,7 +17,7 @@ progress:
 
 Phase: 999.1
 Plan: Not started
-Last session: 2026-06-28 — Completed 999.1-01-PLAN.md
+Last session: 2026-06-28T12:00:49.061Z
 
 ## Phase 1 Complete
 
@@ -149,3 +149,6 @@ Phase 01 (hardware-port) completed all 3 plans:
 - Phase 8 added: Auth — secure access to the app so it's not simply open in the local network without any access control
 - Phase 9 added: Blurred background behind image when using fit-width or fit-height modes
 - Phase 10 added: Battery optimization — verify firmware analysis findings and plan power optimizations (GPIO parking, binary image transport, wake-time reduction, WiFi/CPU tuning)
+- Phase 11 added: Margin for text on image — configurable inset margin to keep text visible behind passe-partout
+- Phase 12 added: More color options — expand text and border color palette with gray shades
+- Phase 13 added: Battery indicator icon — low battery warning and flat battery icons on display
