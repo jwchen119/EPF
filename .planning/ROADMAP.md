@@ -183,3 +183,16 @@ Plans:
 Plans:
 - [ ] 13-01-PLAN.md — Wave 1 (TDD): draw_battery_indicator() + BATTERY_LOW/FLAT_THRESHOLD constants + tests/test_battery_indicator.py (BATIND-01..03)
 - [ ] 13-02-PLAN.md — Wave 2: wire battery_indicator_enabled/position through config + scale_img_in_memory call site + settings.html card + human-verify (BATIND-04, BATIND-05)
+
+## Backlog
+
+### Phase 999.2: Dithered grey overlays — simulate grey on e-paper via pre-dithering (BACKLOG)
+
+**Goal:** Simulate true grey shades on the e-paper display by pre-dithering overlay pixels with a Bayer/checkerboard black+white pattern before compositing onto the photo. Currently Grey 300–600 nearest-neighbour to green on the T133A01 6-color palette due to Euclidean RGB distance; dithering would make them perceptually grey.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Context: Draw overlay on a separate RGBA layer, replace grey regions with a Bayer dither pattern at the appropriate density (e.g. grey_500 = 50% black in a 2×2 tile), then composite before quantization. Small text at low font sizes may look noisy — needs design consideration.
+
+Plans:
+- [ ] TBD (promote with /gsd:review-backlog when ready)
