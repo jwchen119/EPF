@@ -15,7 +15,7 @@ TC-07: stroke_width=0 produces no border_color pixels distinct from text
 
 
 def test_overlay_colors_dict():
-    """TC-01/CLR-01: OVERLAY_COLORS has exactly 14 keys with exact RGBA tuples."""
+    """TC-01/CLR-01: OVERLAY_COLORS has exactly 15 keys with exact RGBA tuples."""
     from app import OVERLAY_COLORS
 
     assert set(OVERLAY_COLORS.keys()) == {
