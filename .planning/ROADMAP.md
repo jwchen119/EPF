@@ -130,11 +130,11 @@ Plans:
 
 **Depends on:** Phase 9
 
-**Plans:** 0/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 10-01-PLAN.md — Wave 1 (TDD): binary image transport server-side — convert_to_binary_in_memory() + octet-stream /download responses; contract tests BATT-01..04
-- [ ] 10-02-PLAN.md — Wave 2 (firmware): gated boot delay + CPU 80 MHz + WiFi TX 8.5 dBm + binary frame decode + GPIO isolation; human-verify on device (BATT-05, BATT-06)
+- [x] 10-01-PLAN.md — Wave 1 (TDD): binary image transport server-side — convert_to_binary_in_memory() + octet-stream /download responses; contract tests BATT-01..04
+- [x] 10-02-PLAN.md — Wave 2 (firmware): gated boot delay + CPU 80 MHz + WiFi TX 11 dBm + binary frame decode + GPIO isolation; human-verify on device (BATT-05, BATT-06)
 
 ## Backlog
 

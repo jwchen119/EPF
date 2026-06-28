@@ -2,21 +2,21 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to execute
-last_updated: "2026-06-24T10:26:35.415Z"
+status: Phase complete — ready for verification
+last_updated: "2026-06-28T06:54:15.358Z"
 progress:
   total_phases: 12
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 26
-  completed_plans: 24
+  completed_plans: 26
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 10 (battery-optimization) — EXECUTING
-Plan: 2 of 2
+Phase: 10 (battery-optimization) — COMPLETE
+Plan: 2 of 2 — all plans complete
 
 ## Phase 1 Complete
 
@@ -81,6 +81,17 @@ Phase 01 (hardware-port) completed all 3 plans:
 - max(bg_width, EPD_W) + max(bg_height, EPD_H) guards in background resize prevent edge artifacts from undersize background (09-02)
 - cpy.pyx retains Image.LANCZOS (not Image.Resampling.LANCZOS) — required to avoid Cython compile errors; mirrors cpy_fallback.py logic otherwise identically (09-03)
 - blur_radius slider in settings.html uses step=5, range 5-80, default 30; reset function uses nextElementSibling.textContent pattern matching existing sliders (09-03)
+- WIFI_POWER_8_5dBm insufficient for 960 KB binary transfer — connection drops observed; bumped to WIFI_POWER_11dBm as confirmed minimum (10-02)
+- wakeup_reason computed BEFORE boot delay so production deep-sleep wakeups skip 3 s USB-CDC wait (10-02)
+- rtc_gpio_isolate used for GPIO1 (BAT_ADC) and GPIO6 (ADC_EN) — both RTC-capable pins on XIAO ESP32-S3 (10-02)
+- Binary readBytes() loop writes directly into PSRAM frame_buf — avoids second 960 KB heap allocation (10-02)
+
+## Phase 10 Plan Status
+
+| Plan | Name | Status |
+|------|------|--------|
+| 10-01 | Binary image transport server-side (TDD) | complete |
+| 10-02 | Firmware: gated boot delay + CPU/WiFi tuning + binary decode + GPIO isolation | complete |
 
 ## Phase 9 Plan Status
 
