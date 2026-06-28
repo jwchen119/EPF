@@ -144,7 +144,7 @@ Plans:
 
 **Depends on:** Phase 10
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 999.1-01-PLAN.md — Measure baseline current, add SPI.end() + pinMode(INPUT) on DC/CS/CS1/RST to hibernate() battery path, human-verify wake cycle + measure after-change current (SLEEP-01..03)
+- [x] 999.1-01-PLAN.md — Measure baseline current, add SPI.end() + pinMode(INPUT) on DC/CS/CS1/RST to hibernate() battery path, human-verify wake cycle + measure after-change current (SLEEP-01..03)

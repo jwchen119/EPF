@@ -2,21 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-06-28T07:02:37.849Z"
+status: Phase complete — ready for verification
+last_updated: "2026-06-28T08:44:47.410Z"
 progress:
   total_phases: 12
-  completed_phases: 10
-  total_plans: 26
-  completed_plans: 26
+  completed_phases: 11
+  total_plans: 27
+  completed_plans: 27
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
+Phase: 999.1 (set-spi-display-gpio-pins-to-input-before-deep-sleep) — COMPLETE
+Plan: 1 of 1 — COMPLETE
+Last session: 2026-06-28 — Completed 999.1-01-PLAN.md
 
 ## Phase 1 Complete
 
@@ -85,6 +86,13 @@ Phase 01 (hardware-port) completed all 3 plans:
 - wakeup_reason computed BEFORE boot delay so production deep-sleep wakeups skip 3 s USB-CDC wait (10-02)
 - rtc_gpio_isolate used for GPIO1 (BAT_ADC) and GPIO6 (ADC_EN) — both RTC-capable pins on XIAO ESP32-S3 (10-02)
 - Binary readBytes() loop writes directly into PSRAM frame_buf — avoids second 960 KB heap allocation (10-02)
+- SPI.end() + pinMode(INPUT) on DC/CS/CS1/RST placed in hibernate() battery path after rtc_gpio_isolate calls and before fs_deinit; gpio_reset_pin avoided; device wakes and re-renders correctly; current measurement deferred (no probe available) (999.1-01)
+
+## Phase 999.1 Plan Status
+
+| Plan | Name | Status |
+|------|------|--------|
+| 999.1-01 | SPI.end() + GPIO tri-state in hibernate() battery path + human verify | complete |
 
 ## Phase 10 Plan Status
 
