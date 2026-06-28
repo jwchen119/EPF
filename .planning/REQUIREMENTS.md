@@ -54,3 +54,19 @@ display edges, keeping it visible inside a passe-partout window mat. Additive to
 | MARGIN-03 | overlay_margin_h/overlay_margin_v are persisted config keys defaulting to 0 | Both keys exist in `DEFAULT_CONFIG['immich']` with value 0; loaded into module globals; round-trip through `update_app_config()` with `int()` cast and `.get()` fallback | unit — `python -c "import app; assert app.DEFAULT_CONFIG['immich']['overlay_margin_h']==0"` |
 | MARGIN-04 | scale_img_in_memory() passes configured margins to draw_date_overlay() | The `draw_date_overlay()` call site includes `margin_h=overlay_margin_h, margin_v=overlay_margin_v` | code review — `grep "margin_h=overlay_margin_h" app.py` |
 | MARGIN-05 | Settings UI exposes Horizontal/Vertical Margin sliders | `templates/settings.html` has two sliders (`overlay_margin_h`, `overlay_margin_v`), range 0–200 step 10, in the Date Overlay card; values persist via the POST handler; old config.yaml without the keys still renders (`.get` fallback) | code review — `grep "overlay_margin_h" templates/settings.html` |
+
+---
+
+## Phase 12 — More Color Options: Gray Shades (CLR-01..CLR-04)
+
+Add three gray shade options (Dark Gray, Gray, Light Gray) to the overlay color palette so
+they can be selected for background, text, and border colors. Overlay-only — the T133A01
+hardware quantization palette is unchanged; grays nearest-neighbor to black/white on the
+e-paper. See `.planning/phases/12-more-color-options-expand-text-and-border-color-palette-with-gray-shades/12-CONTEXT.md`.
+
+| ID | Requirement | Acceptance Criteria | Verification |
+|----|-------------|---------------------|--------------|
+| CLR-01 | OVERLAY_COLORS gains three gray RGBA entries | `OVERLAY_COLORS` contains `'dark_gray': (64, 64, 64, 255)`, `'gray': (128, 128, 128, 255)`, `'light_gray': (192, 192, 192, 255)` in addition to the existing 6 colors | unit — `python -c "import app; assert app.OVERLAY_COLORS['dark_gray']==(64,64,64,255) and app.OVERLAY_COLORS['gray']==(128,128,128,255) and app.OVERLAY_COLORS['light_gray']==(192,192,192,255)"` |
+| CLR-02 | Existing overlay-color contract test reflects the 9-color set | `tests/test_overlay_customization.py::test_overlay_colors_dict` asserts the key set is exactly the 9 colors (black, white, dark_gray, gray, light_gray, yellow, red, blue, green) and the three new RGBA values; full test suite passes | unit — `pytest tests/test_overlay_customization.py::test_overlay_colors_dict -x` |
+| CLR-03 | All three settings dropdowns offer the grays in the correct order | Each of `overlay_bg_color`, `overlay_text_color`, `overlay_border_color` `<select>` in `templates/settings.html` has `<option>` entries for `dark_gray`/`gray`/`light_gray` placed after White and before Yellow (order: Black, White, Dark Gray, Gray, Light Gray, Yellow, Red, Blue, Green) with labels "Dark Gray"/"Gray"/"Light Gray" and the existing `.get()` selected-state pattern | code review — `grep -c 'value="dark_gray"' templates/settings.html` returns 3 |
+| CLR-04 | Gray selections persist round-trip and render without error | Selecting a gray for any of the three colors saves to config.yaml and re-renders selected on reload; the date overlay renders using the gray RGBA without exceptions; old config.yaml lacking gray values still loads (`.get` fallback) | manual — human-verify (12-01 Task 3) |
