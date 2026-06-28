@@ -175,10 +175,11 @@ Plans:
 
 ### Phase 13: Battery indicator icon — low battery warning and flat battery icons on display
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Render a PIL-drawn battery warning icon onto the display image (server-side, before binary encoding) only when the device's reported battery level is low (≤20%, partial-fill icon) or flat (≤5%, empty outline). Warning-only — no icon for a healthy battery, a disabled indicator, or a USB/no-data device. A new `draw_battery_indicator()` mirrors the rotation-aware viewer-space technique of `draw_date_overlay()` and reuses the POSITIONS system. The icon is configurable via a new "Battery Indicator" settings card (enable on/off + 9-position dropdown, defaults On / Top Right). Server-only; no firmware changes.
+**Requirements:** BATIND-01, BATIND-02, BATIND-03, BATIND-04, BATIND-05
 **Depends on:** Phase 12
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 13 to break down)
+- [ ] 13-01-PLAN.md — Wave 1 (TDD): draw_battery_indicator() + BATTERY_LOW/FLAT_THRESHOLD constants + tests/test_battery_indicator.py (BATIND-01..03)
+- [ ] 13-02-PLAN.md — Wave 2: wire battery_indicator_enabled/position through config + scale_img_in_memory call site + settings.html card + human-verify (BATIND-04, BATIND-05)
