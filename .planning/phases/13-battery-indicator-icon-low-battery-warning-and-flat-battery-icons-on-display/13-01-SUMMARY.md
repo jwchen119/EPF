@@ -111,6 +111,13 @@ None - no external service configuration required.
 - draw_battery_indicator() and threshold constants are complete and tested
 - Plan 13-02 can wire the function into scale_img_in_memory(), add config keys (battery_indicator_enabled, battery_indicator_position), and add the Settings UI card
 
+## Self-Check: PASSED
+
+- FOUND: tests/test_battery_indicator.py
+- FOUND: .planning/phases/13-battery-indicator-icon-low-battery-warning-and-flat-battery-icons-on-display/13-01-SUMMARY.md
+- FOUND commit 3da788a (RED tests)
+- FOUND commit ddec05a (GREEN implementation)
+
 ---
 *Phase: 13-battery-indicator-icon-low-battery-warning-and-flat-battery-icons-on-display*
 *Completed: 2026-06-28*
