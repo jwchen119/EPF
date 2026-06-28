@@ -136,13 +136,15 @@ Plans:
 - [x] 10-01-PLAN.md — Wave 1 (TDD): binary image transport server-side — convert_to_binary_in_memory() + octet-stream /download responses; contract tests BATT-01..04
 - [x] 10-02-PLAN.md — Wave 2 (firmware): gated boot delay + CPU 80 MHz + WiFi TX 11 dBm + binary frame decode + GPIO isolation; human-verify on device (BATT-05, BATT-06)
 
-## Backlog
+### Phase 999.1: Set SPI/display GPIO pins to INPUT before deep sleep
 
-### Phase 999.1: Set SPI/display GPIO pins to INPUT before deep sleep (BACKLOG)
+**Goal:** Set SPI and display control pins (DC GPIO10, CS GPIO44, CS1 GPIO41, RST GPIO38) to INPUT mode — and release SCLK GPIO8 / MOSI GPIO9 via `SPI.end()` — before `esp_deep_sleep_start()` in the battery path of `hibernate()`, to eliminate leakage current through the e-paper protection diodes. These are digital-only ESP32-S3 pins (NOT RTC-capable), so `rtc_gpio_isolate()` does not apply and `gpio_reset_pin()` is avoided (can block deep-sleep entry); use `pinMode(pin, INPUT)`. The Seeed_GFX `epaper.sleep()` call only sends a software command and does NOT tri-state these lines. Measure deep-sleep current before/after — impact may be small or zero if the T133A01 already tri-states its own SPI inputs on sleep, in which case the change remains as defensive engineering.
 
-**Goal:** [Captured for future planning] Set SPI and display control pins (DC GPIO10, CS GPIO44/41, RST GPIO38, SCLK GPIO8, MOSI GPIO9) to INPUT mode before `esp_deep_sleep_start()` in `hibernate()` to eliminate leakage current through e-paper protection diodes. Non-RTC pins cannot use `rtc_gpio_isolate()` — use `pinMode(pin, INPUT)` or `gpio_reset_pin()` instead. Measure impact first: check whether the e-paper `Sleep()` driver call already tri-states these lines, which may make this a no-op.
-**Requirements:** TBD
-**Plans:** 0 plans
+**Requirements:** SLEEP-01, SLEEP-02, SLEEP-03
+
+**Depends on:** Phase 10
+
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (promote with /gsd:review-backlog when ready)
+- [ ] 999.1-01-PLAN.md — Measure baseline current, add SPI.end() + pinMode(INPUT) on DC/CS/CS1/RST to hibernate() battery path, human-verify wake cycle + measure after-change current (SLEEP-01..03)
