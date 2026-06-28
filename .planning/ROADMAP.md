@@ -157,10 +157,10 @@ Plans:
 
 **Depends on:** Phase 999.1
 
-**Plans:** 2 plans
+**Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 11-01-PLAN.md — Wave 1 (TDD): extend POSITIONS lambdas + draw_date_overlay() with margin_h/margin_v; tests/test_overlay_margin.py (MARGIN-01, MARGIN-02)
+- [x] 11-01-PLAN.md — Wave 1 (TDD): extend POSITIONS lambdas + draw_date_overlay() with margin_h/margin_v; tests/test_overlay_margin.py (MARGIN-01, MARGIN-02)
 - [ ] 11-02-PLAN.md — Wave 2: wire overlay_margin_h/overlay_margin_v through DEFAULT_CONFIG/globals/update_app_config/POST/call site + two settings.html sliders (MARGIN-03, MARGIN-04, MARGIN-05)
 
 ### Phase 12: More color options — expand text and border color palette with gray shades
