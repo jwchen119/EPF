@@ -148,3 +148,37 @@ Plans:
 
 Plans:
 - [x] 999.1-01-PLAN.md — Measure baseline current, add SPI.end() + pinMode(INPUT) on DC/CS/CS1/RST to hibernate() battery path, human-verify wake cycle + measure after-change current (SLEEP-01..03)
+
+### Phase 11: Margin for text on image — configurable inset margin to keep text visible behind passe-partout
+
+**Goal:** Add a configurable inset margin so the date/location overlay text is pushed away from the display edges, keeping it visible inside a passe-partout window mat. Two separate config keys — `overlay_margin_h` (horizontal) and `overlay_margin_v` (vertical) — default to 0 px (no visual change for existing deployments) and are exposed as 0–200 px sliders in the settings UI. The margin is additive to the existing `padding=6` text-box breathing room and is applied by the 9 POSITIONS lambdas and `draw_date_overlay()`.
+
+**Requirements:** MARGIN-01, MARGIN-02, MARGIN-03, MARGIN-04, MARGIN-05
+
+**Depends on:** Phase 999.1
+
+**Plans:** 2 plans
+
+Plans:
+- [ ] 11-01-PLAN.md — Wave 1 (TDD): extend POSITIONS lambdas + draw_date_overlay() with margin_h/margin_v; tests/test_overlay_margin.py (MARGIN-01, MARGIN-02)
+- [ ] 11-02-PLAN.md — Wave 2: wire overlay_margin_h/overlay_margin_v through DEFAULT_CONFIG/globals/update_app_config/POST/call site + two settings.html sliders (MARGIN-03, MARGIN-04, MARGIN-05)
+
+### Phase 12: More color options — expand text and border color palette with gray shades
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 12 to break down)
+
+### Phase 13: Battery indicator icon — low battery warning and flat battery icons on display
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 13 to break down)
