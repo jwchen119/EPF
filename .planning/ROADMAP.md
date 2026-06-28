@@ -168,7 +168,7 @@ Plans:
 **Goal:** Add three gray shade options (Dark Gray, Gray, Light Gray) to the overlay color system so the date/location overlay's background, text, and border colors can use grays in addition to the existing 6-color T133A01 palette. Grays are overlay-only RGB values (64/128/192) drawn before quantization and nearest-neighbor to black/white on the e-paper; the hardware quantization palette is unchanged.
 **Requirements:** CLR-01, CLR-02, CLR-03, CLR-04
 **Depends on:** Phase 11
-**Plans:** 0/1 plans executed
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 12-01-PLAN.md — Add dark_gray/gray/light_gray to OVERLAY_COLORS + contract test; add gray options to all three color dropdowns; human-verify render & persist
