@@ -33,7 +33,7 @@
 
 // Power management constants
 #define CPU_FREQ_MHZ         80U   // Active-period CPU clock; 80 MHz is min safe with WiFi (240->80 saves ~34 mA)
-#define WIFI_TX_POWER        WIFI_POWER_8_5dBm // LAN-adequate TX power; lowest confirmed-working level (avoid MINUS_1dBm bug)
+#define WIFI_TX_POWER        WIFI_POWER_11dBm // Lowest confirmed-working level for 960 KB binary transfers (8.5 dBm drops under load)
 
 #define SERVER_BASE_URL "http://server.ip:15001"
 // HTTP Basic Auth password (must match server APP_PASSWORD env var). Empty = no auth.
