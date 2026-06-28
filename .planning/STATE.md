@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-06-28T18:18:34.581Z"
+status: Phase complete — ready for verification
+last_updated: "2026-06-28T18:33:49.567Z"
 progress:
   total_phases: 16
   completed_phases: 13
@@ -15,8 +15,8 @@ progress:
 
 ## Current Position
 
-Phase: 13
-Plan: 02 complete (checkpoint:human-verify Task 4 pending)
+Phase: 13 (battery-indicator-icon-low-battery-warning-and-flat-battery-icons-on-display) — EXECUTING
+Plan: 2 of 2
 
 ## Phase 1 Complete
 
@@ -82,19 +82,9 @@ Phase 01 (hardware-port) completed all 3 plans:
 - cpy.pyx retains Image.LANCZOS (not Image.Resampling.LANCZOS) — required to avoid Cython compile errors; mirrors cpy_fallback.py logic otherwise identically (09-03)
 - blur_radius slider in settings.html uses step=5, range 5-80, default 30; reset function uses nextElementSibling.textContent pattern matching existing sliders (09-03)
 - POSITIONS lambdas accept (w, h, tw, th, p, mh, mv); center ignores both; axis-center positions use single relevant axis only (11-01)
-- battery_indicator_enabled stored as raw string 'on'/'off' (not bool) — compared as string at call site; avoids HTML POST omission (13-02 D-15)
-- POSITIONS lambda mh/mv args pass 0,0 in draw_battery_indicator — battery icon uses fixed 10px padding not passe-partout margin (13-02 phase-11-compat)
-- last_battery_voltage > 0 guard in scale_img_in_memory — suppresses false flat icon on USB/no-data devices (13-02 D-07)
 - margin_h=0 and margin_v=0 defaults ensure all existing draw_date_overlay() callers are unaffected — MARGIN-02 backward compat (11-01)
 - overlay_margin_h/v default 0 — zero margin means existing behavior unchanged; int()/.get() fallback mirrors overlay_stroke_width pattern (11-02)
 - config['immich'].get('overlay_margin_h', 0) in Jinja template (not dict access) prevents KeyError on old config.yaml without the new keys (11-02)
-
-## Phase 13 Plan Status
-
-| Plan | Name | Status |
-|------|------|--------|
-| 13-01 | TDD RED+GREEN: draw_battery_indicator() + threshold constants | complete |
-| 13-02 | Config wiring, render call site, and settings UI card | complete (checkpoint:human-verify pending) |
 
 ## Phase 11 Plan Status
 
