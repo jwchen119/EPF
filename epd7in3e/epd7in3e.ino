@@ -507,6 +507,13 @@ public:
       clearScreen();
       WiFi.disconnect(true);
       WiFi.mode(WIFI_OFF);
+      rtc_gpio_isolate(GPIO_NUM_1);  // BAT_ADC_PIN — prevent ADC leakage path in deep sleep
+      rtc_gpio_isolate(GPIO_NUM_6);  // ADC_EN_PIN — fully gate TPS22916 load switch
+      SPI.end();                  // releases GPIO8 (SCLK) and GPIO9 (MOSI) from the SPI peripheral
+      pinMode(DC_PIN,  INPUT);    // GPIO10
+      pinMode(CS_PIN,  INPUT);    // GPIO44
+      pinMode(CS1_PIN, INPUT);    // GPIO41
+      pinMode(RST_PIN, INPUT);    // GPIO38
       esp_sleep_enable_timer_wakeup(86400ULL * 1000000ULL);
       esp_deep_sleep_start();
     }
