@@ -15,18 +15,26 @@ TC-07: stroke_width=0 produces no border_color pixels distinct from text
 
 
 def test_overlay_colors_dict():
-    """TC-01/CLR-01: OVERLAY_COLORS has exactly 9 keys with exact RGBA tuples."""
+    """TC-01/CLR-01: OVERLAY_COLORS has exactly 14 keys with exact RGBA tuples."""
     from app import OVERLAY_COLORS
 
     assert set(OVERLAY_COLORS.keys()) == {
-        'black', 'white', 'dark_gray', 'gray', 'light_gray',
+        'black', 'white',
+        'grey_100', 'grey_200', 'grey_300', 'grey_400', 'grey_500',
+        'grey_600', 'grey_700', 'grey_800', 'grey_900',
         'yellow', 'red', 'blue', 'green',
     }
     assert OVERLAY_COLORS['black'] == (0, 0, 0, 255)
     assert OVERLAY_COLORS['white'] == (255, 255, 255, 255)
-    assert OVERLAY_COLORS['dark_gray'] == (64, 64, 64, 255)
-    assert OVERLAY_COLORS['gray'] == (128, 128, 128, 255)
-    assert OVERLAY_COLORS['light_gray'] == (192, 192, 192, 255)
+    assert OVERLAY_COLORS['grey_100'] == (25, 25, 25, 255)
+    assert OVERLAY_COLORS['grey_200'] == (50, 50, 50, 255)
+    assert OVERLAY_COLORS['grey_300'] == (75, 75, 75, 255)
+    assert OVERLAY_COLORS['grey_400'] == (100, 100, 100, 255)
+    assert OVERLAY_COLORS['grey_500'] == (128, 128, 128, 255)
+    assert OVERLAY_COLORS['grey_600'] == (153, 153, 153, 255)
+    assert OVERLAY_COLORS['grey_700'] == (178, 178, 178, 255)
+    assert OVERLAY_COLORS['grey_800'] == (204, 204, 204, 255)
+    assert OVERLAY_COLORS['grey_900'] == (230, 230, 230, 255)
     assert OVERLAY_COLORS['yellow'] == (255, 216, 0, 255)
     assert OVERLAY_COLORS['red'] == (229, 57, 53, 255)
     assert OVERLAY_COLORS['blue'] == (0, 76, 255, 255)
