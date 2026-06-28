@@ -626,6 +626,33 @@
             </div>
 
             <div class="card">
+                <h2 class="card-title">Battery Indicator</h2>
+                <div class="form-group">
+                    <label for="battery_indicator_enabled">Show Low-Battery Icon:</label>
+                    <select id="battery_indicator_enabled" name="battery_indicator_enabled">
+                        <option value="off" {% if config['immich'].get('battery_indicator_enabled', 'on') == 'off' %}selected{% endif %}>Off</option>
+                        <option value="on"  {% if config['immich'].get('battery_indicator_enabled', 'on') == 'on'  %}selected{% endif %}>On</option>
+                    </select>
+                    <div class="small-text">Shows a battery icon only when the device reports a low (≤20%) or flat (≤5%) charge. Never shown on USB power or when no battery data has been received.</div>
+                </div>
+                <div class="form-group">
+                    <label for="battery_indicator_position">Icon Position:</label>
+                    <select id="battery_indicator_position" name="battery_indicator_position">
+                        <option value="topLeft"      {% if config['immich'].get('battery_indicator_position', 'topRight') == 'topLeft' %}selected{% endif %}>Top Left</option>
+                        <option value="topCenter"    {% if config['immich'].get('battery_indicator_position', 'topRight') == 'topCenter' %}selected{% endif %}>Top Center</option>
+                        <option value="topRight"     {% if config['immich'].get('battery_indicator_position', 'topRight') == 'topRight' %}selected{% endif %}>Top Right</option>
+                        <option value="centerLeft"   {% if config['immich'].get('battery_indicator_position', 'topRight') == 'centerLeft' %}selected{% endif %}>Center Left</option>
+                        <option value="center"       {% if config['immich'].get('battery_indicator_position', 'topRight') == 'center' %}selected{% endif %}>Center</option>
+                        <option value="centerRight"  {% if config['immich'].get('battery_indicator_position', 'topRight') == 'centerRight' %}selected{% endif %}>Center Right</option>
+                        <option value="bottomLeft"   {% if config['immich'].get('battery_indicator_position', 'topRight') == 'bottomLeft' %}selected{% endif %}>Bottom Left</option>
+                        <option value="bottomCenter" {% if config['immich'].get('battery_indicator_position', 'topRight') == 'bottomCenter' %}selected{% endif %}>Bottom Center</option>
+                        <option value="bottomRight"  {% if config['immich'].get('battery_indicator_position', 'topRight') == 'bottomRight' %}selected{% endif %}>Bottom Right</option>
+                    </select>
+                    <div class="small-text">Independent of the date overlay position — they may share a corner.</div>
+                </div>
+            </div>
+
+            <div class="card">
                 <h2 class="card-title">Power Management</h2>
                 <div class="form-group">
                     <label for="sleep_time">Sleep Time Range:</label>
