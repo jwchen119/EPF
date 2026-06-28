@@ -64,6 +64,8 @@ DEFAULT_CONFIG = {
         'blur_radius': 30,  # px, int — GaussianBlur radius for fit mode blurred background
         'overlay_margin_h': 0,  # D-02/D-08: horizontal passe-partout inset (px), int
         'overlay_margin_v': 0,  # D-02/D-08: vertical passe-partout inset (px), int
+        'battery_indicator_enabled': 'on',        # D-15/D-16: show low-battery icon; select on/off
+        'battery_indicator_position': 'topRight',  # D-08/D-09/D-16: POSITIONS key, default topRight
     }
 }
 
@@ -354,7 +356,7 @@ def draw_battery_indicator(output_img, battery_pct, position_str, rotation, font
     # --- Step 3: Position in viewer space (mirror Step 2), default 'topRight' (D-09) ---
     padding = 10  # fixed inset from display edge
     get_xy = POSITIONS.get(position_str, POSITIONS['topRight'])
-    x, y = get_xy(vw, vh, icon_w, icon_h, padding)
+    x, y = get_xy(vw, vh, icon_w, icon_h, padding, 0, 0)
 
     # --- Step 4: Draw battery icon on an RGBA viewer canvas (mirror Step 3) ---
     viewer_canvas = Image.new('RGBA', (vw, vh), (0, 0, 0, 0))
@@ -417,6 +419,8 @@ overlay_language = DEFAULT_CONFIG['immich']['overlay_language']
 blur_radius = DEFAULT_CONFIG['immich']['blur_radius']
 overlay_margin_h = DEFAULT_CONFIG['immich']['overlay_margin_h']
 overlay_margin_v = DEFAULT_CONFIG['immich']['overlay_margin_v']
+battery_indicator_enabled = DEFAULT_CONFIG['immich']['battery_indicator_enabled']
+battery_indicator_position = DEFAULT_CONFIG['immich']['battery_indicator_position']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
@@ -866,7 +870,9 @@ def update_app_config(new_config):
         overlay_language, \
         blur_radius, \
         overlay_margin_h, \
-        overlay_margin_v
+        overlay_margin_v, \
+        battery_indicator_enabled, \
+        battery_indicator_position
 
     current_config = new_config
 
@@ -910,6 +916,8 @@ def update_app_config(new_config):
     blur_radius = int(new_config['immich'].get('blur_radius', 30))
     overlay_margin_h = int(new_config['immich'].get('overlay_margin_h', 0))
     overlay_margin_v = int(new_config['immich'].get('overlay_margin_v', 0))
+    battery_indicator_enabled = new_config['immich'].get('battery_indicator_enabled', 'on')
+    battery_indicator_position = new_config['immich'].get('battery_indicator_position', 'topRight')
 
     print(
         f'Configuration updated: URL = {url}, Album = {albumname}, angle = {rotationAngle}, enhance = {img_enhanced}, contrast = {img_contrast}, strength = {strength}, display_mode = {display_mode}, image_order = {image_order}'
@@ -1052,6 +1060,12 @@ def settings():
                 ),
                 'overlay_margin_v': int(
                     request.form.get('overlay_margin_v', current_config['immich'].get('overlay_margin_v', 0))
+                ),
+                'battery_indicator_enabled': request.form.get(
+                    'battery_indicator_enabled', current_config['immich'].get('battery_indicator_enabled', 'on')
+                ),
+                'battery_indicator_position': request.form.get(
+                    'battery_indicator_position', current_config['immich'].get('battery_indicator_position', 'topRight')
                 ),
             }
         }
