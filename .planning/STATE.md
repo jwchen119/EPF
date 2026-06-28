@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-06-28T12:00:49.066Z"
+status: In Progress
+last_updated: "2026-06-28T12:23:38Z"
 progress:
-  total_phases: 14
-  completed_phases: 11
-  total_plans: 27
+  total_phases: 11
+  completed_phases: 9
+  total_plans: 29
   completed_plans: 27
 ---
 
@@ -15,9 +15,8 @@ progress:
 
 ## Current Position
 
-Phase: 999.1
-Plan: Not started
-Last session: 2026-06-28T12:00:49.061Z
+Phase: 11
+Plan: 02
 
 ## Phase 1 Complete
 
@@ -82,24 +81,15 @@ Phase 01 (hardware-port) completed all 3 plans:
 - max(bg_width, EPD_W) + max(bg_height, EPD_H) guards in background resize prevent edge artifacts from undersize background (09-02)
 - cpy.pyx retains Image.LANCZOS (not Image.Resampling.LANCZOS) — required to avoid Cython compile errors; mirrors cpy_fallback.py logic otherwise identically (09-03)
 - blur_radius slider in settings.html uses step=5, range 5-80, default 30; reset function uses nextElementSibling.textContent pattern matching existing sliders (09-03)
-- WIFI_POWER_8_5dBm insufficient for 960 KB binary transfer — connection drops observed; bumped to WIFI_POWER_11dBm as confirmed minimum (10-02)
-- wakeup_reason computed BEFORE boot delay so production deep-sleep wakeups skip 3 s USB-CDC wait (10-02)
-- rtc_gpio_isolate used for GPIO1 (BAT_ADC) and GPIO6 (ADC_EN) — both RTC-capable pins on XIAO ESP32-S3 (10-02)
-- Binary readBytes() loop writes directly into PSRAM frame_buf — avoids second 960 KB heap allocation (10-02)
-- SPI.end() + pinMode(INPUT) on DC/CS/CS1/RST placed in hibernate() battery path after rtc_gpio_isolate calls and before fs_deinit; gpio_reset_pin avoided; device wakes and re-renders correctly; current measurement deferred (no probe available) (999.1-01)
+- POSITIONS lambdas accept (w, h, tw, th, p, mh, mv); center ignores both; axis-center positions use single relevant axis only (11-01)
+- margin_h=0 and margin_v=0 defaults ensure all existing draw_date_overlay() callers are unaffected — MARGIN-02 backward compat (11-01)
 
-## Phase 999.1 Plan Status
+## Phase 11 Plan Status
 
 | Plan | Name | Status |
 |------|------|--------|
-| 999.1-01 | SPI.end() + GPIO tri-state in hibernate() battery path + human verify | complete |
-
-## Phase 10 Plan Status
-
-| Plan | Name | Status |
-|------|------|--------|
-| 10-01 | Binary image transport server-side (TDD) | complete |
-| 10-02 | Firmware: gated boot delay + CPU/WiFi tuning + binary decode + GPIO isolation | complete |
+| 11-01 | TDD RED+GREEN: margin-aware POSITIONS lambdas + draw_date_overlay margin params | complete |
+| 11-02 | Config wiring, call site, and settings UI sliders | not started |
 
 ## Phase 9 Plan Status
 
@@ -148,7 +138,3 @@ Phase 01 (hardware-port) completed all 3 plans:
 - Phase 7 added: Geolocation overlay from image metadata — extend overlay to show rough location from EXIF/Immich API; fall back to timestamp if no geo info present
 - Phase 8 added: Auth — secure access to the app so it's not simply open in the local network without any access control
 - Phase 9 added: Blurred background behind image when using fit-width or fit-height modes
-- Phase 10 added: Battery optimization — verify firmware analysis findings and plan power optimizations (GPIO parking, binary image transport, wake-time reduction, WiFi/CPU tuning)
-- Phase 11 added: Margin for text on image — configurable inset margin to keep text visible behind passe-partout
-- Phase 12 added: More color options — expand text and border color palette with gray shades
-- Phase 13 added: Battery indicator icon — low battery warning and flat battery icons on display

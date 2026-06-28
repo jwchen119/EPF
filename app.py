@@ -199,17 +199,21 @@ def parse_photo_location(local_image=None, immich_exif=None):
 
 
 # 9-position anchor lookup for date overlay (DO-04).
-# Each lambda returns (x, y) of the text's top-left given image w/h, text bbox w/h, and padding.
+# Each lambda returns (x, y) of the text's top-left given image w/h, text bbox w/h,
+# padding p, and optional inset margins mh (horizontal) and mv (vertical).
+# mh and mv are additive to p for edge positions; center ignores both;
+# axis-center positions (topCenter/bottomCenter/centerLeft/centerRight) use only
+# the relevant axis margin.
 POSITIONS = {
-    'topLeft': lambda w, h, tw, th, p: (p, p),
-    'topCenter': lambda w, h, tw, th, p: ((w - tw) // 2, p),
-    'topRight': lambda w, h, tw, th, p: (w - tw - p, p),
-    'centerLeft': lambda w, h, tw, th, p: (p, (h - th) // 2),
-    'center': lambda w, h, tw, th, p: ((w - tw) // 2, (h - th) // 2),
-    'centerRight': lambda w, h, tw, th, p: (w - tw - p, (h - th) // 2),
-    'bottomLeft': lambda w, h, tw, th, p: (p, h - th - p),
-    'bottomCenter': lambda w, h, tw, th, p: ((w - tw) // 2, h - th - p),
-    'bottomRight': lambda w, h, tw, th, p: (w - tw - p, h - th - p),
+    'topLeft': lambda w, h, tw, th, p, mh, mv: (p + mh, p + mv),
+    'topCenter': lambda w, h, tw, th, p, mh, mv: ((w - tw) // 2, p + mv),
+    'topRight': lambda w, h, tw, th, p, mh, mv: (w - tw - p - mh, p + mv),
+    'centerLeft': lambda w, h, tw, th, p, mh, mv: (p + mh, (h - th) // 2),
+    'center': lambda w, h, tw, th, p, mh, mv: ((w - tw) // 2, (h - th) // 2),
+    'centerRight': lambda w, h, tw, th, p, mh, mv: (w - tw - p - mh, (h - th) // 2),
+    'bottomLeft': lambda w, h, tw, th, p, mh, mv: (p + mh, h - th - p - mv),
+    'bottomCenter': lambda w, h, tw, th, p, mh, mv: ((w - tw) // 2, h - th - p - mv),
+    'bottomRight': lambda w, h, tw, th, p, mh, mv: (w - tw - p - mh, h - th - p - mv),
 }
 
 
@@ -225,6 +229,8 @@ def draw_date_overlay(
     text_color=(255, 255, 255, 255),
     border_color=(255, 255, 255, 255),
     stroke_width=2,
+    margin_h=0,
+    margin_v=0,
 ):
     """Draw a date overlay (filled-background or outline style) at position_str.
 
@@ -247,6 +253,8 @@ def draw_date_overlay(
         text_color:   RGBA tuple for the text glyph fill in both modes.
         border_color: RGBA tuple for the stroke in outline mode.
         stroke_width: Stroke width in pixels used in outline mode.
+        margin_h:     Extra horizontal inset (px) from left/right display edge, additive to padding.
+        margin_v:     Extra vertical inset (px) from top/bottom display edge, additive to padding.
     """
     bw, bh = output_img.size  # buffer dimensions (always 1200x1600)
 
@@ -265,7 +273,7 @@ def draw_date_overlay(
 
     # --- Step 2: compute overlay position in viewer space ---
     get_xy = POSITIONS.get(position_str, POSITIONS['bottomRight'])
-    x, y = get_xy(vw, vh, tw, th, padding)
+    x, y = get_xy(vw, vh, tw, th, padding, margin_h, margin_v)
 
     # --- Step 3: draw upright text on a viewer-oriented RGBA canvas ---
     viewer_canvas = Image.new('RGBA', (vw, vh), (0, 0, 0, 0))
