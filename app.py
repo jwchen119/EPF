@@ -705,6 +705,23 @@ def scale_img_in_memory(
                 margin_v=overlay_margin_v,
             )
 
+    # Low-battery warning icon (BATIND-03/04; warning-only, D-05/D-19).
+    # battery_pct comes from the live ADC voltage; 0 (USB/no data) suppresses the icon (D-07).
+    if battery_indicator_enabled == 'on':
+        battery_pct = (
+            calculate_battery_percentage(last_battery_voltage)
+            if last_battery_voltage > 0
+            else 0
+        )
+        draw_battery_indicator(
+            output_img,
+            battery_pct,
+            battery_indicator_position,
+            rotation,
+            overlay_font_size,
+            OVERLAY_COLORS.get('white', (255, 255, 255, 255)),
+        )
+
     # Save image into ram
     img_io = io.BytesIO()
     output_img.save(img_io, 'BMP')
