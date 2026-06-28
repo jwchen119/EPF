@@ -198,6 +198,10 @@ def parse_photo_location(local_image=None, immich_exif=None):
     return None
 
 
+# Battery indicator warning thresholds (percent). Hardcoded, not configurable (D-06).
+BATTERY_LOW_THRESHOLD = 20   # battery_pct <= this and > FLAT -> partial-fill warning icon
+BATTERY_FLAT_THRESHOLD = 5   # battery_pct <= this -> empty (flat) battery outline
+
 # 9-position anchor lookup for date overlay (DO-04).
 # Each lambda returns (x, y) of the text's top-left given image w/h, text bbox w/h, and padding.
 POSITIONS = {
@@ -294,6 +298,84 @@ def draw_date_overlay(
     # viewer_canvas is now buffer-sized; paste only where alpha > 0.
     overlay_rgb = viewer_canvas.convert('RGB')
     mask = viewer_canvas.split()[3]  # alpha channel as mask
+    output_img.paste(overlay_rgb, mask=mask)
+
+
+def draw_battery_indicator(output_img, battery_pct, position_str, rotation, font_size, color):
+    """Draw a battery warning icon onto output_img (PIL RGB Image, mutated in place).
+
+    Warning-only: only renders when battery level is low or flat.
+
+    Three states (BATIND-01, D-02):
+      - battery_pct > BATTERY_LOW_THRESHOLD (20): no-op — image is left byte-identical (D-19)
+      - BATTERY_FLAT_THRESHOLD < battery_pct <= BATTERY_LOW_THRESHOLD: body outline + nub + partial fill bar
+      - battery_pct <= BATTERY_FLAT_THRESHOLD (5): body outline + nub only, no fill (empty/flat icon)
+
+    Icon is rotation-aware via the same viewer-space coordinate technique as draw_date_overlay():
+    'topRight' always means the viewer's top-right regardless of rotationAngle (D-11).
+
+    Args:
+        output_img:   PIL.Image (RGB mode). Mutated in place.
+        battery_pct:  Battery percentage (0-100 float or int).
+        position_str: One of POSITIONS keys; unknown values fall back to 'topRight' (D-09).
+        rotation:     Display rotation angle in degrees (0, 90, 180, 270).
+        font_size:    Icon height in pixels (derived from overlay_font_size, default 26) (D-12).
+        color:        RGBA tuple for the icon (D-03, default white).
+    """
+    # --- Warning-only no-op guard (D-05 / D-19) ---
+    if battery_pct > BATTERY_LOW_THRESHOLD:
+        return
+
+    # --- Step 1: Compute icon geometry from font_size (D-12, D-13) ---
+    icon_h = int(font_size)
+    body_w = icon_h * 2
+    nub_w = max(1, int(icon_h * 0.2))   # ~20% of height
+    nub_h = max(1, int(icon_h * 0.5))   # ~50% of height, vertically centered
+    stroke = 2                            # 2px stroke (D-13)
+    icon_w = body_w + nub_w              # total footprint including nub
+
+    # --- Step 2: Viewer canvas dims (mirror draw_date_overlay Step 1) ---
+    bw, bh = output_img.size  # buffer dimensions (always 1200x1600)
+    if rotation in (90, 270):
+        vw, vh = bh, bw
+    else:
+        vw, vh = bw, bh
+
+    # --- Step 3: Position in viewer space (mirror Step 2), default 'topRight' (D-09) ---
+    padding = 10  # fixed inset from display edge
+    get_xy = POSITIONS.get(position_str, POSITIONS['topRight'])
+    x, y = get_xy(vw, vh, icon_w, icon_h, padding)
+
+    # --- Step 4: Draw battery icon on an RGBA viewer canvas (mirror Step 3) ---
+    viewer_canvas = Image.new('RGBA', (vw, vh), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(viewer_canvas)
+
+    # Battery body outline (left part of footprint):
+    body = [x, y, x + body_w, y + icon_h]
+    draw.rectangle(body, outline=color, width=stroke)
+
+    # Nub on the right end (conventional orientation), vertically centered:
+    nub_top = y + (icon_h - nub_h) // 2
+    nub = [x + body_w, nub_top, x + body_w + nub_w, nub_top + nub_h]
+    draw.rectangle(nub, outline=color, width=stroke)
+
+    # Partial fill bar ONLY in the low (non-flat) state (D-02):
+    if battery_pct > BATTERY_FLAT_THRESHOLD:
+        inset = stroke + 2
+        fill_frac = max(0.15, min(1.0, battery_pct / BATTERY_LOW_THRESHOLD))
+        fill_w = int((body_w - 2 * inset) * fill_frac)
+        if fill_w > 0:
+            fill_rect = [x + inset, y + inset, x + inset + fill_w, y + icon_h - inset]
+            draw.rectangle(fill_rect, fill=color)
+    # battery_pct <= FLAT_THRESHOLD -> no fill (empty outline)
+
+    # --- Step 5: Rotate viewer canvas into buffer orientation (mirror Step 4) ---
+    if rotation != 0:
+        viewer_canvas = viewer_canvas.rotate(rotation, expand=True)
+
+    # --- Step 6: Paste overlay onto output_img using alpha mask (mirror Step 5) ---
+    overlay_rgb = viewer_canvas.convert('RGB')
+    mask = viewer_canvas.split()[3]
     output_img.paste(overlay_rgb, mask=mask)
 
 

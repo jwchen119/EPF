@@ -21,7 +21,7 @@ from app import BATTERY_FLAT_THRESHOLD, BATTERY_LOW_THRESHOLD, draw_battery_indi
 # ---------------------------------------------------------------------------
 
 _DEFAULT_POSITION = 'topRight'
-_DEFAULT_COLOR = (255, 255, 255, 255)
+_DEFAULT_COLOR = (0, 0, 0, 255)  # black — detectable on white background
 _DEFAULT_FONT_SIZE = 26
 _DEFAULT_ROTATION = 0
 
