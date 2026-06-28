@@ -187,8 +187,9 @@ private:
         }
         else
         {
-          Serial.printf("%s GET failed: %s\n",
+          Serial.printf("%s GET failed (code %d): %s\n",
                         isHttps ? "HTTPS" : "HTTP",
+                        httpCode,
                         http.errorToString(httpCode).c_str());
           break;
         }
@@ -207,10 +208,16 @@ private:
     {
       hibernate(sleepDuration);
     }
+    else if (success)
+    {
+      // Download succeeded but server didn't provide a sleep duration — use default
+      hibernate();
+    }
     else
     {
-      // Use default sleep duration if server didn't provide one
-      hibernate();
+      // Download failed — use shorter retry interval so device retries sooner
+      Serial.printf("Download failed — retrying in %d s\n", (int)MIN_SLEEP_TIME);
+      hibernate((int)MIN_SLEEP_TIME);
     }
 
     return success;
@@ -297,6 +304,17 @@ private:
     WiFi.mode(WIFI_OFF);
     rtc_gpio_isolate(GPIO_NUM_1);  // BAT_ADC_PIN — prevent ADC leakage path in deep sleep
     rtc_gpio_isolate(GPIO_NUM_6);  // ADC_EN_PIN — fully gate TPS22916 load switch
+    // Tri-state SPI/display control pins before deep sleep to eliminate leakage
+    // through the e-paper protection diodes. epaper.sleep() (sent by update())
+    // only issues a software command — it does NOT change GPIO directions.
+    // GPIO8/9/10/38/41/44 are digital-only on ESP32-S3 (NOT RTC-capable), so
+    // rtc_gpio_isolate() does not apply; use SPI.end() + pinMode(INPUT) instead.
+    // Do NOT use the gpio reset pin API — community reports it can block deep-sleep entry.
+    SPI.end();                  // releases GPIO8 (SCLK) and GPIO9 (MOSI) from the SPI peripheral
+    pinMode(DC_PIN,  INPUT);    // GPIO10
+    pinMode(CS_PIN,  INPUT);    // GPIO44
+    pinMode(CS1_PIN, INPUT);    // GPIO41
+    pinMode(RST_PIN, INPUT);    // GPIO38
     fs_deinit();
     delay(50);
 
