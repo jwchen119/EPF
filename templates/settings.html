@@ -576,6 +576,22 @@
                         <output class="slider-value">{{ config['immich'].get('overlay_stroke_width', 2) }}</output>
                     </div>
                 </div>
+                <div class="form-group">
+                    <label for="overlay_margin_h">Horizontal Margin (px):</label>
+                    <div class="slider-container">
+                        <input type="range" id="overlay_margin_h" name="overlay_margin_h" min="0" max="200" step="10"
+                            value="{{ config['immich'].get('overlay_margin_h', 0) }}" oninput="updateSliderValue(this)">
+                        <output class="slider-value">{{ config['immich'].get('overlay_margin_h', 0) }}</output>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="overlay_margin_v">Vertical Margin (px):</label>
+                    <div class="slider-container">
+                        <input type="range" id="overlay_margin_v" name="overlay_margin_v" min="0" max="200" step="10"
+                            value="{{ config['immich'].get('overlay_margin_v', 0) }}" oninput="updateSliderValue(this)">
+                        <output class="slider-value">{{ config['immich'].get('overlay_margin_v', 0) }}</output>
+                    </div>
+                </div>
             </div>
 
             <div class="card">
