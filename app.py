@@ -62,6 +62,8 @@ DEFAULT_CONFIG = {
         'overlay_font_size': 26,  # D-12/D-13/D-14: font px, int
         'overlay_language': 'en',  # 'en' | 'de' — Nominatim reverse-geocode language (GEO-LANG)
         'blur_radius': 30,  # px, int — GaussianBlur radius for fit mode blurred background
+        'overlay_margin_h': 0,  # D-02/D-08: horizontal passe-partout inset (px), int
+        'overlay_margin_v': 0,  # D-02/D-08: vertical passe-partout inset (px), int
     }
 }
 
@@ -331,6 +333,8 @@ overlay_stroke_width = DEFAULT_CONFIG['immich']['overlay_stroke_width']
 overlay_font_size = DEFAULT_CONFIG['immich']['overlay_font_size']
 overlay_language = DEFAULT_CONFIG['immich']['overlay_language']
 blur_radius = DEFAULT_CONFIG['immich']['blur_radius']
+overlay_margin_h = DEFAULT_CONFIG['immich']['overlay_margin_h']
+overlay_margin_v = DEFAULT_CONFIG['immich']['overlay_margin_v']
 
 # Retrieve environment variables with error handling
 apikey = os.getenv('IMMICH_API_KEY')
@@ -602,6 +606,8 @@ def scale_img_in_memory(
                 text_color=OVERLAY_COLORS.get(overlay_text_color, (255, 255, 255, 255)),
                 border_color=OVERLAY_COLORS.get(overlay_border_color, (255, 255, 255, 255)),
                 stroke_width=overlay_stroke_width,
+                margin_h=overlay_margin_h,
+                margin_v=overlay_margin_v,
             )
 
     # Save image into ram
@@ -767,7 +773,9 @@ def update_app_config(new_config):
         overlay_stroke_width, \
         overlay_font_size, \
         overlay_language, \
-        blur_radius
+        blur_radius, \
+        overlay_margin_h, \
+        overlay_margin_v
 
     current_config = new_config
 
@@ -809,6 +817,8 @@ def update_app_config(new_config):
     overlay_font_size = int(new_config['immich'].get('overlay_font_size', 26))
     overlay_language = new_config['immich'].get('overlay_language', 'en')
     blur_radius = int(new_config['immich'].get('blur_radius', 30))
+    overlay_margin_h = int(new_config['immich'].get('overlay_margin_h', 0))
+    overlay_margin_v = int(new_config['immich'].get('overlay_margin_v', 0))
 
     print(
         f'Configuration updated: URL = {url}, Album = {albumname}, angle = {rotationAngle}, enhance = {img_enhanced}, contrast = {img_contrast}, strength = {strength}, display_mode = {display_mode}, image_order = {image_order}'
@@ -946,6 +956,12 @@ def settings():
                     'overlay_language', current_config['immich'].get('overlay_language', 'en')
                 ),
                 'blur_radius': int(request.form.get('blur_radius', current_config['immich'].get('blur_radius', 30))),
+                'overlay_margin_h': int(
+                    request.form.get('overlay_margin_h', current_config['immich'].get('overlay_margin_h', 0))
+                ),
+                'overlay_margin_v': int(
+                    request.form.get('overlay_margin_v', current_config['immich'].get('overlay_margin_v', 0))
+                ),
             }
         }
 
