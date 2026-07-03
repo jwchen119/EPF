@@ -30,6 +30,12 @@
 
 Preferences preferences;
 
+// Consecutive-low-battery-boot counter. RTC_DATA_ATTR survives deep sleep
+// (timer or EXT1 wake) but resets to 0 on power-on-reset/full power loss —
+// exactly the persistence semantics needed for enforceLowBatteryGuard()'s
+// escalation policy below (see D-15 rationale at enforceLowBatteryGuard()).
+RTC_DATA_ATTR static int g_lowBatteryStreak = 0;
+
 class EpaperManager
 {
 private:
@@ -472,9 +478,22 @@ public:
   }
 
   // Read battery voltage via GPIO1 ADC behind GPIO5 ADC_EN gate.
-  // Returns mV (after 1:1 divider compensation). Single-sample read for
-  // the low-battery guard. The averaged read for the HTTP header is
-  // handled separately in downloadImage() (Plan 02).
+  // Returns mV (after 1:1 divider compensation).
+  //
+  // NOTE on "Power source" naming: this board has NO USB/VBUS-sense GPIO
+  // (confirmed from EE02 schematic — see .planning/phases/04-battery-voltage/
+  // 04-RESEARCH.md). m_onBattery is therefore only a proxy for "a battery
+  // cell is physically connected" (VBAT floats near 0V with none attached);
+  // it CANNOT distinguish "running on battery" from "running on USB with a
+  // battery also connected." The BQ24070 PMIC keeps VBAT elevated whenever
+  // ANY power source is present, so m_onBattery is true in the overwhelming
+  // majority of real-world (USB-plugged) boots too. Do not use this flag as
+  // proof the device is unattended/unplugged.
+  //
+  // Multi-sample averaged read (10 samples) — matches the noise-reduction
+  // approach already used for the HTTP header read in downloadImage() to
+  // avoid single-sample ADC jitter (~50-100mV, documented in 04-RESEARCH.md)
+  // flipping the guard decision near the MIN_BATTERY_VOLTAGE threshold.
   int checkVoltage()
   {
     pinMode(ADC_EN_PIN, OUTPUT);
@@ -483,9 +502,14 @@ public:
     analogReadResolution(12);
     digitalWrite(ADC_EN_PIN, HIGH);
     delay(10);  // load switch + divider settle time
-    int rawMv = analogReadMilliVolts(BAT_ADC_PIN);
+    const int kSamples = 10;
+    long rawMvSum = 0;
+    for (int i = 0; i < kSamples; i++) {
+      rawMvSum += analogReadMilliVolts(BAT_ADC_PIN);
+      delay(5);
+    }
     digitalWrite(ADC_EN_PIN, LOW);
-    int vbatMv = rawMv * 2;  // 1:1 divider (R28=R29=10kΩ)
+    int vbatMv = (int)((rawMvSum / kSamples) * 2);  // 1:1 divider (R28=R29=10kΩ)
     m_batteryVoltageMv = vbatMv;
     m_onBattery = (vbatMv > 1500);
     Serial.printf("Battery voltage: %d mV\n", vbatMv);
@@ -498,25 +522,70 @@ public:
   int batteryVoltageMv() const { return m_batteryVoltageMv; }
 
   // Low-battery guard: if running on battery and below MIN_BATTERY_VOLTAGE,
-  // clear screen, disable WiFi, and enter 24h deep sleep. Does not return.
+  // clear screen, disable WiFi, and enter a protective deep sleep. Does not
+  // return (when it fires).
+  //
+  // IMPORTANT: because m_onBattery cannot distinguish "on battery" from
+  // "on USB with VBAT coincidentally below threshold" (see checkVoltage()
+  // note above — this board has no VBUS-sense/PG GPIO; re-confirmed directly
+  // against the EE02 v1.0 schematic — BQ24070 ~PG pin 18 is explicitly
+  // unpopulated on this board revision, and STAT1/STAT2 only drive the
+  // charge-status LEDs, not any GPIO), this guard can fire even while the
+  // board is powered externally by USB with a low/aging/not-yet-charged
+  // battery cell attached.
+  //
+  // D-15 (escalation policy, added after real-hardware report that a single
+  // low reading was bricking a USB-powered board for a full 24h): rather than
+  // committing to an unrecoverable 24h sleep on the FIRST low-voltage boot,
+  // treat the first (streak < LOW_BATTERY_ESCALATION_THRESHOLD) low readings
+  // as "possibly transient / possibly USB-powered with a low cell" and only
+  // sleep for MIN_SLEEP_TIME (short retry, matches the interval already used
+  // for failed-download retries). If the board is genuinely on USB power,
+  // the BQ24070 will have recharged the cell above threshold well before the
+  // streak counter escalates, and the device recovers on its own within a
+  // few short cycles instead of appearing bricked. Only after
+  // LOW_BATTERY_ESCALATION_THRESHOLD consecutive independent boots still
+  // read low (meaning the board is truly unattended on a dying/disconnected
+  // battery, not USB-recharging between checks) does the guard escalate to
+  // the full 24h protective sleep. g_lowBatteryStreak is RTC_DATA_ATTR so it
+  // survives the short deep-sleep/wake cycles used here but resets to 0 on a
+  // genuine power-on-reset (e.g. user unplugs/replugs), which is exactly the
+  // desired reset condition. EXT1 GPIO wakeup on WAKEUP_PIN is armed
+  // alongside the timer wakeup at every stage (mirrors hibernate()'s
+  // battery-sleep path) so pressing the wake button always recovers the
+  // device immediately regardless of which sleep duration is active.
   void enforceLowBatteryGuard()
   {
-    if (m_onBattery && m_batteryVoltageMv < (int)MIN_BATTERY_VOLTAGE) {
-      Serial.printf("Battery low (%d mV < %u mV) — sleeping 24h\n",
-                    m_batteryVoltageMv, (unsigned)MIN_BATTERY_VOLTAGE);
-      clearScreen();
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF);
-      rtc_gpio_isolate(GPIO_NUM_1);  // BAT_ADC_PIN — prevent ADC leakage path in deep sleep
-      rtc_gpio_isolate(GPIO_NUM_6);  // ADC_EN_PIN — fully gate TPS22916 load switch
-      SPI.end();                  // releases GPIO8 (SCLK) and GPIO9 (MOSI) from the SPI peripheral
-      pinMode(DC_PIN,  INPUT);    // GPIO10
-      pinMode(CS_PIN,  INPUT);    // GPIO44
-      pinMode(CS1_PIN, INPUT);    // GPIO41
-      pinMode(RST_PIN, INPUT);    // GPIO38
-      esp_sleep_enable_timer_wakeup(86400ULL * 1000000ULL);
-      esp_deep_sleep_start();
+    if (!(m_onBattery && m_batteryVoltageMv < (int)MIN_BATTERY_VOLTAGE)) {
+      g_lowBatteryStreak = 0; // voltage recovered (or no battery signal) — clear streak
+      return;
     }
+
+    g_lowBatteryStreak++;
+    bool escalate = g_lowBatteryStreak >= LOW_BATTERY_ESCALATION_THRESHOLD;
+    uint64_t sleepSeconds = escalate ? 86400ULL : (uint64_t)MIN_SLEEP_TIME;
+
+    Serial.printf("Battery low (%d mV < %u mV), streak=%d — sleeping %s\n",
+                  m_batteryVoltageMv, (unsigned)MIN_BATTERY_VOLTAGE,
+                  g_lowBatteryStreak,
+                  escalate ? "24h (escalated)" : "briefly (retry)");
+    clearScreen();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    rtc_gpio_isolate(GPIO_NUM_1);  // BAT_ADC_PIN — prevent ADC leakage path in deep sleep
+    rtc_gpio_isolate(GPIO_NUM_6);  // ADC_EN_PIN — fully gate TPS22916 load switch
+    SPI.end();                  // releases GPIO8 (SCLK) and GPIO9 (MOSI) from the SPI peripheral
+    pinMode(DC_PIN,  INPUT);    // GPIO10
+    pinMode(CS_PIN,  INPUT);    // GPIO44
+    pinMode(CS1_PIN, INPUT);    // GPIO41
+    pinMode(RST_PIN, INPUT);    // GPIO38
+    esp_sleep_enable_timer_wakeup(sleepSeconds * 1000000ULL);
+    rtc_gpio_init(WAKEUP_PIN);
+    rtc_gpio_set_direction(WAKEUP_PIN, RTC_GPIO_MODE_INPUT_ONLY);
+    rtc_gpio_pullup_en(WAKEUP_PIN);
+    rtc_gpio_pulldown_dis(WAKEUP_PIN);
+    esp_sleep_enable_ext1_wakeup(1ULL << WAKEUP_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_deep_sleep_start();
   }
 };
 

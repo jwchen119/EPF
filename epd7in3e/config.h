@@ -17,7 +17,8 @@
 // Battery ADC configuration (EE02 board — confirmed from schematic)
 #define BAT_ADC_PIN          1U    // GPIO1 = BAT_ADC net (A0/D0)
 #define ADC_EN_PIN           6U    // GPIO6 = ADC_EN net (D5/A5 on XIAO) — drives TPS22916 load switch
-#define MIN_BATTERY_VOLTAGE  3050U // mV — below this triggers 24h sleep
+#define MIN_BATTERY_VOLTAGE  3050U // mV — below this triggers low-battery guard
+#define LOW_BATTERY_ESCALATION_THRESHOLD 4U // consecutive low-voltage boots before escalating retry sleep to 24h (D-15)
 
 // Sleep and timing configuration
 #define SLEEP_TIME_COMPENSATION 1.009f // Sleep time compensation factor
