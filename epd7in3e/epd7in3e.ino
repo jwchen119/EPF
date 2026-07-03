@@ -115,7 +115,15 @@ private:
       int avgBatteryMv = (plusV / 50) * 2;  // 1:1 divider
       digitalWrite(ADC_EN_PIN, LOW);
       bool avgOnBattery = (avgBatteryMv > 1500);
-      int headerValue = avgOnBattery ? avgBatteryMv : 0;
+      // Report the TRUE measured VBAT on every cycle — including while the cell
+      // is charging on USB — so the server persists the climbing voltage and
+      // the charge curve (up to ~4200 mV = full) is visible. Previously this was
+      // forced to 0 whenever the board did not look "on battery", which hid the
+      // reading entirely while plugged in. avgOnBattery is still used below only
+      // to drive the power-management path (deep sleep vs. USB restart), not to
+      // gate what gets reported. A genuinely absent battery reads ~0 mV, which
+      // the server already ignores (its persist guard is `> 0`).
+      int headerValue = avgBatteryMv;
       http.setAuthorization("admin", APP_PASSWORD);
       http.addHeader("batteryCap", String(headerValue));
       Serial.printf("HTTP batteryCap header: %d mV (onBattery=%s)\n",
