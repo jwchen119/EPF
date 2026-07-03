@@ -673,6 +673,21 @@ void setup()
     Serial.println("First boot or reset");
   }
 
+  // Release the RTC hold placed on the battery-sense pins before the previous
+  // deep sleep. hibernate()/enforceLowBatteryGuard() call rtc_gpio_isolate() on
+  // GPIO1 (BAT_ADC) and GPIO6 (ADC_EN) to kill ADC leakage during sleep, and
+  // rtc_gpio_isolate() latches the pad via rtc_gpio_hold_en(). That latch
+  // SURVIVES the wake, so without releasing it here GPIO6 stays disabled — the
+  // TPS22916 load switch never turns on and the BAT_ADC divider is left
+  // unpowered — making every post-sleep read return ~0 mV. Cold boot has no
+  // latch, which is why only the very first reading looked correct. Release the
+  // hold and hand both pads back to the normal digital/ADC path before
+  // checkVoltage() runs.
+  rtc_gpio_hold_dis(GPIO_NUM_1);
+  rtc_gpio_deinit(GPIO_NUM_1);
+  rtc_gpio_hold_dis(GPIO_NUM_6);
+  rtc_gpio_deinit(GPIO_NUM_6);
+
   epaperManager.checkVoltage();
   epaperManager.enforceLowBatteryGuard();
 
