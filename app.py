@@ -478,8 +478,50 @@ OVERLAY_COLORS = {
     'green': (29, 185, 84, 255),
 }
 
-last_battery_voltage = 0
-last_battery_update = 0
+# Battery telemetry persistence — stored alongside config.yaml in the persisted
+# /data/config volume so the last reading (and the full history) survive
+# container restarts. battery_state.json holds only the most recent reading;
+# battery_history.csv accumulates one timestamped row per report so the
+# discharge curve can be plotted to compare firmware versions objectively.
+battery_state_file = os.path.join(os.path.dirname(config_file), 'battery_state.json')
+battery_history_file = os.path.join(os.path.dirname(config_file), 'battery_history.csv')
+
+
+def load_battery_state():
+    """Return (voltage_mv, epoch_seconds) from the last persisted report, or (0, 0)."""
+    try:
+        with open(battery_state_file, 'r') as f:
+            data = json.load(f)
+        return float(data.get('voltage', 0)), float(data.get('updated', 0))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return 0.0, 0.0
+
+
+def persist_battery_reading(voltage_mv, timestamp):
+    """Atomically persist the latest reading and append a history row.
+
+    The latest-value file is written via a temp file + os.replace so a crash
+    mid-write can never corrupt it. The history file is append-only.
+    """
+    try:
+        os.makedirs(os.path.dirname(battery_state_file), exist_ok=True)
+        tmp_path = f'{battery_state_file}.tmp'
+        with open(tmp_path, 'w') as f:
+            json.dump({'voltage': voltage_mv, 'updated': timestamp}, f)
+        os.replace(tmp_path, battery_state_file)
+
+        write_header = not os.path.exists(battery_history_file)
+        with open(battery_history_file, 'a') as f:
+            if write_header:
+                f.write('iso_time,epoch,voltage_mv,percent\n')
+            iso_time = datetime.fromtimestamp(timestamp).isoformat(timespec='seconds')
+            percent = calculate_battery_percentage(voltage_mv)
+            f.write(f'{iso_time},{int(timestamp)},{voltage_mv:.0f},{percent}\n')
+    except OSError as e:
+        print(f'[WARN] Could not persist battery reading: {e}')
+
+
+last_battery_voltage, last_battery_update = load_battery_state()
 
 
 def require_auth(f):
@@ -1314,6 +1356,7 @@ def process_and_download():
         if battery_voltage > 0:
             last_battery_voltage = battery_voltage
             last_battery_update = time.time()
+            persist_battery_reading(last_battery_voltage, last_battery_update)
     except (TypeError, ValueError):
         pass
 

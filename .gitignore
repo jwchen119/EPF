@@ -16,6 +16,8 @@ __pycache__/
 
 .vscode/
 config.yaml
+battery_state.json
+battery_history.csv
 *.pdf
 test-images/
 geo_cache.json

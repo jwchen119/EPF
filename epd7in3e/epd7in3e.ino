@@ -44,6 +44,7 @@ private:
   String imageUrl = "";
   int m_batteryVoltageMv = 0;
   bool m_onBattery = false;
+  uint8_t *m_frameBuf = nullptr; // PSRAM frame buffer; owned between readFrameData() and renderFrame()
 
   bool downloadImage()
   {
@@ -130,7 +131,7 @@ private:
 
         if (httpCode == HTTP_CODE_OK)
         {
-          success = processImageData(*http.getStreamPtr(), http.getSize());
+          success = readFrameData(*http.getStreamPtr(), http.getSize());
 
           // After successful image download, get sleep duration
           if (success)
@@ -209,6 +210,19 @@ private:
     if (basicClient)
       delete basicClient;
 
+    // The frame and the sleep duration are now in hand — WiFi is no longer
+    // needed. Power the radio down BEFORE the ~20-30 s panel refresh so the
+    // modem (kept awake at ~80-100 mA by autoConnect()'s WiFi.setSleep(0)) does
+    // not idle through the whole refresh. renderFrame() does the actual push +
+    // refresh; hibernate() below re-issues WiFi off on its battery path, which
+    // is harmless (idempotent).
+    if (success)
+    {
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+      renderFrame();
+    }
+
     // If we got a valid sleep duration, use it for hibernation
     if (success && sleepDuration > 0)
     {
@@ -241,8 +255,14 @@ private:
     return c == ',' || c == '\n' || c == '\r' || c == '\0';
   }
 
-  // Process image data stream and update display
-  bool processImageData(WiFiClient &stream, int contentLength)
+  // Stream the raw binary frame from the HTTP response into a PSRAM buffer.
+  // READ ONLY — the ~20-30 s panel refresh is deliberately NOT done here. It is
+  // deferred to renderFrame() so it can run AFTER WiFi is powered down. The
+  // radio, left in no-sleep mode by autoConnect() (WiFi.setSleep(0)), otherwise
+  // idles at ~80-100 mA for the entire refresh — the single largest avoidable
+  // draw in the wake cycle. Ownership of the buffer passes to m_frameBuf, which
+  // renderFrame() frees.
+  bool readFrameData(WiFiClient &stream, int contentLength)
   {
     if (contentLength <= 0) {
       Serial.println("Invalid content length");
@@ -250,13 +270,12 @@ private:
     }
 
     // Allocate PSRAM frame buffer (960,000 bytes for 1200x1600 4bpp)
-    uint8_t* frame_buf = (uint8_t*)ps_malloc(1200 * 1600 / 2);
-    if (!frame_buf) {
+    const size_t FRAME_SIZE = 1200 * 1600 / 2; // 960000 bytes
+    m_frameBuf = (uint8_t*)ps_malloc(FRAME_SIZE);
+    if (!m_frameBuf) {
       Serial.println("PSRAM allocation failed — check ps_malloc availability");
       return false;
     }
-    size_t frame_offset = 0;
-    const size_t FRAME_SIZE = 1200 * 1600 / 2; // 960000 bytes
 
     // Stream raw binary directly into the PSRAM frame buffer (binary transport — plan 10-01).
     size_t totalRead = 0;
@@ -264,26 +283,32 @@ private:
       int available = stream.available();
       if (available > 0) {
         size_t toRead = min((size_t)available, FRAME_SIZE - totalRead);
-        int read = stream.readBytes(frame_buf + totalRead, (int)toRead);
+        int read = stream.readBytes(m_frameBuf + totalRead, (int)toRead);
         if (read > 0) totalRead += (size_t)read;
       } else {
         delay(1);
       }
     }
-    frame_offset = totalRead;
 
-    if (frame_offset != FRAME_SIZE) {
-      Serial.printf("Warning: expected %d bytes, received %d\n", (int)FRAME_SIZE, (int)frame_offset);
+    if (totalRead != FRAME_SIZE) {
+      Serial.printf("Warning: expected %d bytes, received %d\n", (int)FRAME_SIZE, (int)totalRead);
     }
+    return true;
+  }
 
-    // Push frame to display and trigger refresh
+  // Push the previously-read frame to the panel, trigger the refresh, and
+  // release the PSRAM buffer. MUST be called only after WiFi is powered down
+  // (see readFrameData() rationale). No-op if no frame was read.
+  void renderFrame()
+  {
+    if (!m_frameBuf) return;
     Serial.println("Pushing image to display...");
-    epaper.pushImage(0, 0, EPD_WIDTH, EPD_HEIGHT, (uint16_t*)frame_buf);
+    epaper.pushImage(0, 0, EPD_WIDTH, EPD_HEIGHT, (uint16_t*)m_frameBuf);
     epaper.update();
     epaper.sleep();
-    free(frame_buf);
+    free(m_frameBuf);
+    m_frameBuf = nullptr;
     Serial.println("Display updated");
-    return true;
   }
 
   // Enter low-power state with calculated wake-up interval.
@@ -350,12 +375,17 @@ private:
   // Check if configuration mode should be entered
   bool shouldEnterConfigMode()
   {
-    // Check configuration pin with debounce
-    // if (digitalRead(CONFIG_PIN) == LOW) {
-    //   delay(BUTTON_DEBOUNCE);
-    //   return digitalRead(CONFIG_PIN) == LOW;
-    // }
-    // return false;
+    // Timer wakeups are unattended production refresh cycles — no user is
+    // present to hold the config button, so skip the Button poll entirely.
+    // Button::result() blocks a minimum of ~1.5 s waiting for events; running
+    // it on every hourly wake wastes ~0.3 mAh/day at ~80 mA for nothing.
+    // A deliberate config-button press wakes the board via EXT1 (WAKEUP_PIN ==
+    // CONFIG_PIN == GPIO2), and cold boot / reset is also a user-present event —
+    // both still run the full poll so config mode remains reachable.
+    if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER)
+    {
+      return false;
+    }
     Button button(CONFIG_PIN);
     return button.result();
   }
