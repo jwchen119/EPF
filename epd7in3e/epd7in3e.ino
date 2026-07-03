@@ -126,8 +126,10 @@ private:
       int headerValue = avgBatteryMv;
       http.setAuthorization("admin", APP_PASSWORD);
       http.addHeader("batteryCap", String(headerValue));
-      Serial.printf("HTTP batteryCap header: %d mV (onBattery=%s)\n",
-                    headerValue, avgOnBattery ? "true" : "false");
+      Serial.printf("HTTP batteryCap header: %d mV (%s)\n",
+                    headerValue,
+                    avgOnBattery ? "battery cell present"
+                                 : "no cell detected — USB power");
       // Refresh stored state so hibernate() sees the latest reading.
       m_batteryVoltageMv = avgBatteryMv;
       m_onBattery = avgOnBattery;
@@ -330,7 +332,7 @@ private:
       // USB power path (BV-02, BV-03): skip deep sleep entirely.
       // delay() in Arduino-ESP32 calls vTaskDelay internally, which feeds the
       // task watchdog. Cast to uint32_t to avoid int*int overflow at >2147s.
-      Serial.printf("USB power: waiting %d s then restarting\n", sleep_interval);
+      Serial.printf("No battery cell — waiting %d s then restarting\n", sleep_interval);
       Serial.flush();
       delay((uint32_t)sleep_interval * 1000UL);
       ESP.restart();
@@ -338,7 +340,7 @@ private:
     }
 
     // Battery power path (BV-03): full deep sleep.
-    Serial.printf("Battery power: entering deep sleep for %d s\n", sleep_interval);
+    Serial.printf("Battery cell present — entering deep sleep for %d s\n", sleep_interval);
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     rtc_gpio_isolate(GPIO_NUM_1);  // BAT_ADC_PIN — prevent ADC leakage path in deep sleep
@@ -551,7 +553,14 @@ public:
     m_batteryVoltageMv = vbatMv;
     m_onBattery = (vbatMv > 1500);
     Serial.printf("Battery voltage: %d mV\n", vbatMv);
-    Serial.printf("Power source: %s\n", m_onBattery ? "battery" : "USB");
+    // This board has no VBUS/power-good sense line (see the class-level note on
+    // enforceLowBatteryGuard()), so "cell present" CANNOT be distinguished from
+    // "on USB and charging" — VBAT reads a valid cell voltage in both cases.
+    // Only "no cell" reliably implies USB power. Report what is actually
+    // knowable instead of asserting a false USB/battery call.
+    Serial.printf("Battery status: %s\n",
+                  m_onBattery ? "cell present (on battery or charging via USB)"
+                              : "no cell detected — running on USB");
     return vbatMv;
   }
 
