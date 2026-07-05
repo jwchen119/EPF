@@ -708,13 +708,35 @@ def process_and_download():
             return jsonify({"error": "Album not found"}), 404
 
         # Get photos in the album
-        response = requests.get(f"{url}/api/albums/{albumid}", headers=headers)
-        if response.status_code != 200:
-            return jsonify({"error": "Failed to fetch album details"}), 500
+        # Immich v3 breaking change: GET /api/albums/{id} no longer returns the
+        # 'assets' property. Album assets must now be fetched via the paginated
+        # POST /api/search/metadata endpoint (filtered by albumIds).
+        album_assets = []
+        page = 1
+        while True:
+            search_body = {
+                "albumIds": [albumid],
+                "size": 1000,
+                "page": page,
+                "withExif": True,
+            }
+            response = requests.post(f"{url}/api/search/metadata", headers=headers, json=search_body)
+            if response.status_code != 200:
+                return jsonify({"error": "Failed to fetch album details"}), 500
 
-        data = response.json()
-        if 'assets' not in data or not data['assets']:
+            search_result = response.json().get('assets', {})
+            album_assets.extend(search_result.get('items', []))
+
+            next_page = search_result.get('nextPage')
+            if not next_page:
+                break
+            page = int(next_page)
+
+        if not album_assets:
             return jsonify({"error": "No images found in album"}), 404
+
+        # Keep the same downstream shape as the previous album-details response
+        data = {'assets': album_assets}
 
         # Get display order setting
         image_order = current_config['immich']['image_order']
@@ -776,12 +798,19 @@ def process_and_download():
         processed_image.seek(0)
         c_code = convert_to_c_code_in_memory(Image.open(processed_image))
         
-        return send_file(
+        # Build Immich photo URL for NFC tag
+        # Immich web UI URL format: {base_url}/albums/{album_id}/photos/{asset_id}
+        photo_url = f"https://my.immich.app/albums/{albumid}/photos/{asset_id}"
+
+        response = send_file(
             c_code,
             mimetype='text/plain',
             as_attachment=True,
             download_name=f"image_{asset_id}.c"
         )
+        response.headers['X-Photo-Url'] = photo_url
+        print(f"Setting X-Photo-Url header: {photo_url}")
+        return response
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
