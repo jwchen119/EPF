@@ -37,8 +37,19 @@
 #define WIFI_TX_POWER        WIFI_POWER_11dBm // Lowest confirmed-working level for 960 KB binary transfers (8.5 dBm drops under load)
 
 #define SERVER_BASE_URL "http://server.ip:15001"
-// HTTP Basic Auth password (must match server APP_PASSWORD env var). Empty = no auth.
-#define APP_PASSWORD ""
+
+// HTTP Basic Auth password (must match the server's APP_PASSWORD env var).
+// Empty = no auth. Real credentials belong in secrets.h, which is gitignored so
+// they can never be committed by accident: copy secrets.example.h to secrets.h
+// and fill it in. Without secrets.h the fallback below keeps the build working.
+#if defined(__has_include)
+#  if __has_include("secrets.h")
+#    include "secrets.h"
+#  endif
+#endif
+#ifndef APP_PASSWORD
+#  define APP_PASSWORD ""
+#endif
 #define PREFERENCES_SLEEP_TIME_KEY "refresh_rate"
 #define PREFERENCES_LAST_SLEEP_TIME "last_sleep"
 #define PREFERENCES_CONNECT_API_RETRY_COUNT "retry_count"

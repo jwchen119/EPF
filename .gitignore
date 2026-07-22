@@ -18,6 +18,12 @@ __pycache__/
 config.yaml
 battery_state.json
 battery_history.csv
+
+# Local firmware credentials — never commit (see epd7in3e/secrets.example.h)
+epd7in3e/secrets.h
+
+# Agent/session scratch files
+scratchpad/
 *.pdf
 test-images/
 geo_cache.json
