@@ -212,5 +212,6 @@ def refresh_next_photo():
     albumid = resolve_album_id()
     asset = select_asset(list_album_assets(albumid))
     state.next_photo.update({'asset': asset, 'album': album_name(),
-                             'album_id': albumid, 'chosen_at': datetime.now()})
+                             'album_id': albumid, 'chosen_at': datetime.now(),
+                             'rendered': None})
     return asset

@@ -23,7 +23,7 @@ Two parts live in this repository and talk over HTTP:
 
 - **Immich as the photo source.** Drop photos into an album and they appear on the frame; nothing has to be copied or converted by hand. HEIC and RAW originals are handled on the server.
 - **Server-side processing.** Scaling, rotation, fit or fill, saturation, contrast and Floyd-Steinberg dithering all run on the server. The dithering core is written in Cython.
-- **Low power.** The ESP32 only wakes to fetch and show a photo. The panel is put to sleep before hibernating; the original author measured around 16 uA in deep sleep.
+- **Low power.** The ESP32 only wakes to fetch and show a photo, and the server chooses and renders the following photo right after handing one over, so a wake-up is about 36 seconds, 30 of which are the panel refreshing. The panel is put to sleep before hibernating; the original author measured around 16 uA in deep sleep.
 - **Settings page.** Immich URL and album, rotation, fit or fill, random or newest-first ordering, enhancement sliders, quiet hours and wake-up interval, all saved from the browser. Shows the current and the next photo, with a button to swap the next one. Available in English, Traditional Chinese, Simplified Chinese and Japanese.
 - **Status and history.** The page shows whether Immich is reachable, whether the album still exists, when the frame last checked in and its battery level, plus a system log of check-ins, settings changes and errors.
 - **Low-battery notifications** over Telegram or LINE Messaging API, linked from the settings page. A service only counts as linked once a test message has actually been delivered.
@@ -110,7 +110,7 @@ The two the firmware uses:
 
 | Endpoint | Used by | Purpose |
 | --- | --- | --- |
-| `GET /download` | frame | The next photo as a hex byte stream. Request header `batteryCap` carries the battery voltage in millivolts; response header `X-Photo-Url` carries the photo's Immich link for the NFC tag. |
+| `GET /download` | frame | The next photo as a hex byte stream, prepared in advance so the frame is not kept awake while the album is listed and the image processed. Request header `batteryCap` carries the battery voltage in millivolts; response header `X-Photo-Url` carries the photo's Immich link for the NFC tag. |
 | `GET /sleep` | frame | `{current_time, next_wakeup, sleep_duration}`; `sleep_duration` is in milliseconds and already accounts for the quiet hours. |
 
 The rest serve the settings page: `/setting` (GET renders, POST saves), `/status`, `/log`, `/log/clear`, `/next` (GET shows, POST re-chooses), `/preview/original`, `/preview/next`, and `/notify/bind`, `/notify/unbind`, `/notify/channels`, `/notify/test`. The settings page has no authentication, so keep the port on your LAN or behind a reverse proxy that adds some.

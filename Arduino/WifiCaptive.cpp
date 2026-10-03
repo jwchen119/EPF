@@ -117,7 +117,8 @@ void WifiCaptive::setUpWebserver(AsyncWebServer &server, const IPAddress &localI
 			}
 
             WiFi.scanDelete();
-			Serial.println(json);
+			// Not echoed to serial: the list carries saved passwords in clear
+			Serial.println("Network list sent to the portal page");
 
 			if (WiFi.scanComplete() == -2){
 				WiFi.scanNetworks(true);

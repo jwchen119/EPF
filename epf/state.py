@@ -27,6 +27,12 @@ next_photo = {
     'album': None,
     'album_id': None,
     'chosen_at': None,
+    # The asset already fetched, processed and packed for the panel, prepared
+    # on a thread after the previous hand-over so /download can answer at once:
+    # {'asset_id', 'c_code' (bytes), 'settings' (the picture settings it was
+    # rendered with), 'timing'}. None until prepared, and dropped whenever the
+    # choice or the picture settings change.
+    'rendered': None,
 }
 
 # When the last low-battery warning went out. In memory, so a restart lets one
@@ -37,4 +43,9 @@ notify = {
 
 def clear_next_photo():
     """ Called once the asset has been handed over: it is no longer "next" """
-    next_photo.update({'asset': None, 'album': None, 'album_id': None, 'chosen_at': None})
+    next_photo.update({'asset': None, 'album': None, 'album_id': None, 'chosen_at': None,
+                       'rendered': None})
+
+def clear_rendered():
+    """ The prepared image no longer matches the settings; keep the choice, drop the pixels """
+    next_photo['rendered'] = None
