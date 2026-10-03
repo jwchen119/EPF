@@ -158,7 +158,8 @@ To change the settings later, hold the button during a reboot the same way. Save
 
 - Wakes on the schedule the server returns, or immediately on a short button press.
 - Below 3.05 V the frame clears the screen and sleeps for 24 hours to protect the battery.
-- A server error is retried once; if the download fails or no schedule is received, the frame sleeps for 24 hours and tries again.
+- A server error (HTTP 500) is retried up to five times, ten seconds apart. If the download still fails, or the server cannot be reached, the frame sleeps for 15 minutes and tries again, so it recovers soon after Immich or the server comes back. If the photo arrives but no schedule does, it sleeps for an hour.
+- Right after first setup the server answers with an error until an album is configured on the settings page. Once it is, either wait for the next 15-minute retry or press the button to fetch the first photo immediately.
 - If the panel does not respond within 60 seconds the firmware gives up on the refresh instead of hanging.
 - With an NFC tag fitted, the tag reads "Updating..." while a new photo is being fetched and then carries the link to the photo on display. The tag is powered off during deep sleep.
 

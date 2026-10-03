@@ -30,6 +30,28 @@ class ImmichError(Exception):
         self.message = message
         self.status = status
 
+# Immich on the LAN answers in well under a second; these only matter when it
+# is down. Without them a request to an Immich that accepts the connection but
+# never answers would hang the handler, and the frame would give up at its own
+# 50-second limit without ever learning why. They have to stay inside that
+# limit so the device gets a status code it can act on.
+CONNECT_TIMEOUT = 5
+READ_TIMEOUT = 20
+
+def _call(method, url, **kwargs):
+    """
+    requests.request() with the API key and timeouts, reporting a transport
+    failure as an ImmichError the routes can return: 504 when Immich did not
+    answer in time, 502 when it could not be reached at all.
+    """
+    kwargs.setdefault('timeout', (CONNECT_TIMEOUT, READ_TIMEOUT))
+    try:
+        return requests.request(method, url, headers=headers, **kwargs)
+    except requests.Timeout as error:
+        raise ImmichError(f"Immich did not answer in time: {error}", 504)
+    except requests.RequestException as error:
+        raise ImmichError(f"Could not reach Immich: {error}", 502)
+
 def base_url():
     return config.immich()['url']
 
@@ -42,9 +64,9 @@ def photo_link(asset_id):
 
 def resolve_album_id():
     """ Look up the configured album, raising ImmichError if it cannot be used """
-    response = requests.get(f"{base_url()}/api/albums", headers=headers)
+    response = _call('GET', f"{base_url()}/api/albums")
     if response.status_code != 200:
-        raise ImmichError("Failed to fetch albums")
+        raise ImmichError(f"Failed to fetch albums (Immich returned {response.status_code})", 502)
 
     wanted = album_name()
     albumid = next((item['id'] for item in response.json()
@@ -69,10 +91,9 @@ def list_album_assets(albumid):
             "page": page,
             "withExif": True,
         }
-        response = requests.post(f"{base_url()}/api/search/metadata",
-                                 headers=headers, json=search_body)
+        response = _call('POST', f"{base_url()}/api/search/metadata", json=search_body)
         if response.status_code != 200:
-            raise ImmichError("Failed to fetch album details")
+            raise ImmichError(f"Failed to fetch album details (Immich returned {response.status_code})", 502)
 
         result = response.json().get('assets', {})
         assets.extend(result.get('items', []))
@@ -88,10 +109,11 @@ def list_album_assets(albumid):
 
 def fetch_original(asset_id):
     """ The asset's original bytes, for the image pipeline """
-    response = requests.get(f"{base_url()}/api/assets/{asset_id}/original",
-                            headers=headers, stream=True)
+    # Not streamed: the whole body has to be in memory for the pipeline anyway,
+    # and reading it inside _call keeps a stalled transfer under the timeout.
+    response = _call('GET', f"{base_url()}/api/assets/{asset_id}/original")
     if response.status_code != 200:
-        raise ImmichError("Failed to download image")
+        raise ImmichError(f"Failed to download image (Immich returned {response.status_code})", 502)
     return response.content
 
 def fetch_thumbnail(asset_id):

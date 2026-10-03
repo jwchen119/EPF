@@ -112,101 +112,95 @@ private:
     bool success = false;
     int sleepDuration = 0;
     String photoUrl = "";
-    bool retryOnError = true; // Add retry flag
 
-    while (retryOnError && !success)
-    {                       // Add retry loop
-      retryOnError = false; // Default to no retry
+    // A 500 from the server, or a 202 while it is still processing, is retried
+    // up to MAX_RETRIES times; any other failure gives up straight away.
+    for (uint8_t i = 0; i < MAX_RETRIES && !success; i++)
+    {
+      int httpCode = http.GET();
 
-      for (uint8_t i = 0; i < MAX_RETRIES; i++)
+      if (httpCode == HTTP_CODE_OK)
       {
-        int httpCode = http.GET();
-
-        if (httpCode == HTTP_CODE_OK)
+        // Read photo URL from response header before consuming stream
+        photoUrl = http.header(NFC_PHOTO_URL_HEADER);
+        if (!photoUrl.isEmpty())
         {
-          // Read photo URL from response header before consuming stream
-          photoUrl = http.header(NFC_PHOTO_URL_HEADER);
-          if (!photoUrl.isEmpty())
-          {
-            Serial.print(F("Photo URL from header: "));
-            Serial.println(photoUrl);
-            // Write NFC immediately so the tag is up-to-date before image processing
-            nfcWriter.writePhotoUri(photoUrl);
-            // nfcWriter.writePhotoUri("https://my.immich.app/albums/867e4d0a-8d36-4229-a0ed-ff9a3721e9f7/photos/ad80ae48-1a9d-42b0-8aae-eeeed255de5e");
-          }
-          else
-          {
-            Serial.println(F("Warning: X-Photo-Url header empty or not received"));
-          }
-
-          success = processImageData(&http);
-
-          // After successful image download, get sleep duration
-          if (success)
-          {
-            // Setup new client for sleep request
-            WiFiClient *sleepBasicClient = nullptr;
-            WiFiClientSecure *sleepSecureClient = nullptr;
-
-            if (isHttps)
-            {
-              sleepSecureClient = new WiFiClientSecure;
-              sleepSecureClient->setInsecure();
-              sleepHttp.begin(*sleepSecureClient, sleepUrl);
-            }
-            else
-            {
-              sleepBasicClient = new WiFiClient;
-              sleepHttp.begin(*sleepBasicClient, sleepUrl);
-            }
-
-            sleepHttp.addHeader("Accept", "application/json");
-            int sleepHttpCode = sleepHttp.GET();
-
-            if (sleepHttpCode == HTTP_CODE_OK)
-            {
-              String payload = sleepHttp.getString();
-              // StaticJsonDocument<200> doc;
-              JsonDocument doc;
-              DeserializationError error = deserializeJson(doc, payload);
-
-              if (!error)
-              {
-                sleepDuration = doc["sleep_duration"] | 0;
-                if (sleepDuration > 0)
-                {
-                  sleepDuration /= 1000; // Convert to seconds
-                }
-              }
-            }
-
-            sleepHttp.end();
-            if (sleepSecureClient)
-              delete sleepSecureClient;
-            if (sleepBasicClient)
-              delete sleepBasicClient;
-          }
-          break;
-        }
-        else if (httpCode == HTTP_CODE_ACCEPTED)
-        {
-          Serial.println("Server processing, waiting...");
-          delay(RETRY_DELAY);
-        }
-        else if (httpCode == HTTP_CODE_INTERNAL_SERVER_ERROR)
-        {
-          Serial.println("Server error (500), will retry once...");
-          delay(RETRY_DELAY);
-          retryOnError = true; // Enable one retry on 500 error
-          break;               // Exit current retry loop
+          Serial.print(F("Photo URL from header: "));
+          Serial.println(photoUrl);
+          // Write NFC immediately so the tag is up-to-date before image processing
+          nfcWriter.writePhotoUri(photoUrl);
+          // nfcWriter.writePhotoUri("https://my.immich.app/albums/867e4d0a-8d36-4229-a0ed-ff9a3721e9f7/photos/ad80ae48-1a9d-42b0-8aae-eeeed255de5e");
         }
         else
         {
-          Serial.printf("%s GET failed: %s\n",
-                        isHttps ? "HTTPS" : "HTTP",
-                        http.errorToString(httpCode).c_str());
-          break;
+          Serial.println(F("Warning: X-Photo-Url header empty or not received"));
         }
+
+        success = processImageData(&http);
+
+        // After successful image download, get sleep duration
+        if (success)
+        {
+          // Setup new client for sleep request
+          WiFiClient *sleepBasicClient = nullptr;
+          WiFiClientSecure *sleepSecureClient = nullptr;
+
+          if (isHttps)
+          {
+            sleepSecureClient = new WiFiClientSecure;
+            sleepSecureClient->setInsecure();
+            sleepHttp.begin(*sleepSecureClient, sleepUrl);
+          }
+          else
+          {
+            sleepBasicClient = new WiFiClient;
+            sleepHttp.begin(*sleepBasicClient, sleepUrl);
+          }
+
+          sleepHttp.addHeader("Accept", "application/json");
+          int sleepHttpCode = sleepHttp.GET();
+
+          if (sleepHttpCode == HTTP_CODE_OK)
+          {
+            String payload = sleepHttp.getString();
+            // StaticJsonDocument<200> doc;
+            JsonDocument doc;
+            DeserializationError error = deserializeJson(doc, payload);
+
+            if (!error)
+            {
+              sleepDuration = doc["sleep_duration"] | 0;
+              if (sleepDuration > 0)
+              {
+                sleepDuration /= 1000; // Convert to seconds
+              }
+            }
+          }
+
+          sleepHttp.end();
+          if (sleepSecureClient)
+            delete sleepSecureClient;
+          if (sleepBasicClient)
+            delete sleepBasicClient;
+        }
+        break;
+      }
+      else if (httpCode == HTTP_CODE_ACCEPTED)
+      {
+        Serial.println("Server processing, waiting...");
+        delay(RETRY_DELAY);
+      }
+      else if (httpCode == HTTP_CODE_INTERNAL_SERVER_ERROR)
+      {
+        Serial.printf("Server error (500), retry %u of %u...\n", i + 1, MAX_RETRIES);
+        delay(RETRY_DELAY);
+      }
+      else
+      {
+        Serial.printf("%s GET failed: %s\n",
+                      isHttps ? "HTTPS" : "HTTP",
+                      http.errorToString(httpCode).c_str());
+        break;
       }
     }
 
@@ -217,15 +211,17 @@ private:
     if (basicClient)
       delete basicClient;
 
-    // If we got a valid sleep duration, use it for hibernation
-    if (success && sleepDuration > 0)
+    if (success)
     {
-      hibernate(sleepDuration);
+      // Follow the server's schedule; if /sleep did not answer, fall back to
+      // the default interval rather than losing a day.
+      hibernate(sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL);
     }
     else
     {
-      // Use default sleep duration if server didn't provide one
-      hibernate();
+      // Try again soon so the frame recovers quickly once Immich or the server
+      // is back, instead of staying blank for 24 hours.
+      hibernate(MIN_SLEEP_TIME);
     }
 
     return success;
@@ -329,9 +325,8 @@ private:
   {
     Serial.println("Preparing for deep sleep...");
 
-    // Use provided sleep duration or get default from WiFi manager
-    // int sleep_interval = sleepDuration > 0 ? sleepDuration : wifiManager.getServerSleepDuration();
-    int sleep_interval = sleepDuration > 0 ? sleepDuration : 86400;
+    // Use the provided duration, or the default interval when none was given
+    int sleep_interval = sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL;
 
     // Cut NFC module power before sleep (GPIO held LOW during deep sleep)
     nfcWriter.powerOff();
@@ -345,15 +340,7 @@ private:
     Serial.printf("Sleep interval: %d seconds\n", sleep_interval);
 
     // Convert sleep time to microseconds
-    uint64_t sleep_time;
-    if (sleep_interval > 0)
-    {
-      sleep_time = static_cast<uint64_t>(sleep_interval) * 1000000ULL;
-    }
-    else
-    {
-      sleep_time = static_cast<uint64_t>(SLEEP_INTERVAL) * 1000000ULL;
-    }
+    uint64_t sleep_time = static_cast<uint64_t>(sleep_interval) * 1000000ULL;
 
     Serial.printf("Sleep time in microseconds: %llu\n", sleep_time);
 
@@ -509,7 +496,7 @@ public:
     }
 
     Serial.println(F("Entering sleep mode"));
-    hibernate();
+    hibernate(MIN_SLEEP_TIME);
   }
 
   // Check battery voltage level
