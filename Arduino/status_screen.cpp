@@ -164,6 +164,7 @@ void StatusScreen::renderRow(uint16_t y, uint8_t *row)
 void StatusScreen::show()
 {
   uint8_t row[ROW_BYTES];
+  unsigned long started = millis();
   _epd.SendCommand(0x10);
   for (uint16_t y = 0; y < PANEL_H; y++)
   {
@@ -171,5 +172,9 @@ void StatusScreen::show()
     for (uint16_t i = 0; i < ROW_BYTES; i++)
       _epd.SendData(row[i]);
   }
+  unsigned long streamed = millis();
+  Serial.printf("[screen] %u text, %u QR items streamed in %lu ms, refreshing...\n",
+                _textCount, _qrCount, streamed - started);
   _epd.TurnOnDisplay();
+  Serial.printf("[screen] panel refresh took %lu ms\n", millis() - streamed);
 }

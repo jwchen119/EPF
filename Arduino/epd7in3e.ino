@@ -507,7 +507,9 @@ public:
   // ERROR_SLEEP_TIME in config.h). Never returns.
   void failAndSleep()
   {
-    uint8_t failures = preferences.getUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, 0);
+    // A button press means someone is intervening, so the back-off starts
+    // over: the next quiet retry comes after MIN_SLEEP_TIME, not ERROR_SLEEP_TIME.
+    uint8_t failures = manualWake ? 0 : preferences.getUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, 0);
     if (failures < 255)
       failures++;
     preferences.putUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, failures);
@@ -649,13 +651,15 @@ void setup()
 {
   // USB CDC (HWCDCSerial) must be begin()'d first; otherwise HWCDC::write() drops output because tx_ring_buf == NULL
   Serial.begin(115200);
-  // Wait for the host to open the serial port. isCDC_Connected() arms the TX interrupt and
-  // flushes the FIFO on every call, so the loop exits as soon as a monitor attaches instead
-  // of always waiting the full SERIAL_WAIT_MS.
-  // The 10 s cap exists because PlatformIO's monitor needs ~8 s after upload to reopen the USB CDC port.
-  // With no host attached (normal battery operation) it times out and continues; behaviour is unaffected.
-  const uint32_t SERIAL_WAIT_MS = 10000;
-  for (uint32_t t0 = millis(); !Serial && (millis() - t0) < SERIAL_WAIT_MS;)
+  // Wait for the host to open the serial port so early output is not lost; the
+  // loop exits as soon as a monitor attaches. After a power-on or a flash the
+  // PlatformIO monitor needs several seconds to reopen the port, hence the long
+  // wait. A wake-up from deep sleep is routine and only gets the short one, so
+  // the frame on battery is not held up by a monitor that is not there.
+  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+  const uint32_t serialWaitMs =
+      (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) ? SERIAL_WAIT_BOOT_MS : SERIAL_WAIT_WAKE_MS;
+  for (uint32_t t0 = millis(); !Serial && (millis() - t0) < serialWaitMs;)
   {
     delay(10);
   }
@@ -663,9 +667,6 @@ void setup()
   Serial.print(F("=== boot: serial up after "));
   Serial.print(millis());
   Serial.println(F("ms ==="));
-
-  // Determine wake up reason
-  esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
 
   if (wakeup_reason == ESP_SLEEP_WAKEUP_TIMER)
   {

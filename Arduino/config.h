@@ -14,6 +14,12 @@
 #define BUTTON_DEBOUNCE 100U   // Button debounce time in ms
 #define BUTTON_HOLD_TIME 3000U // Button hold time in ms
 
+// How long setup() waits for a serial monitor before carrying on. The long wait
+// applies after power-on or a flash (PlatformIO's monitor needs a few seconds to
+// reopen the port); wake-ups from deep sleep get the short one.
+#define SERIAL_WAIT_BOOT_MS 10000U
+#define SERIAL_WAIT_WAKE_MS 2000U
+
 // Sleep and timing configuration
 #define SLEEP_TIME_COMPENSATION 1.009f // Sleep time compensation factor
 #define SLEEP_INTERVAL 3600U           // Default sleep interval in seconds (1 hour)
