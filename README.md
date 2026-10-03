@@ -136,6 +136,8 @@ pio device monitor      # serial output at 115200 baud
 
 `platformio.ini` pulls in the ESP32-C6 board support (the pioarduino fork of the Espressif platform, since the upstream one does not support the C6 yet), the `min_spiffs` partition table and all libraries: ArduinoJson 7, AsyncTCP and ESPAsyncWebServer (ESP32Async forks), NTPClient, STM32duino ST25DV and QRCode.
 
+`pio run -t upload` writes only the bootloader, partition table and application, so the Wi-Fi and server settings stored in NVS survive an update. The build also produces `firmware.factory.bin`, a single image for tools that flash from address 0 such as [web.esphome.io](https://web.esphome.io/); flashing it erases the whole flash including those settings, and the frame comes up in setup mode afterwards. The frame's USB port only exists while it is awake, so press the button (or hold it for the setup screen) right before uploading.
+
 ### Build with the Arduino IDE
 
 1. Install the ESP32 board package (3.x) and select **DFRobot FireBeetle 2 ESP32-C6**.

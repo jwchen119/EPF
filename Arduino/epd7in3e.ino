@@ -269,31 +269,47 @@ private:
       return false;
     }
 
-    String hexBuffer;
+    // The body is C-array text: "XX,XX,..." terminated by "};". Each hex pair
+    // is decoded nibble by nibble as it streams past; anything that is not a
+    // hex digit ends the current byte.
+    uint8_t value = 0;
+    uint8_t digits = 0;
     int totalBytesProcessed = 0;
+    unsigned long started = millis();
+    unsigned long firstData = 0;
 
     while (contentLength > 0 && http->connected())
     {
-      int bytesToRead = min(contentLength, (int)sizeof(buffer));
+      // BUFFER_SIZE, not sizeof(buffer): buffer is a pointer, so sizeof() gave
+      // 4 and the whole body was read four bytes at a time.
+      int bytesToRead = min(contentLength, (int)BUFFER_SIZE);
       int bytesRead = stream->readBytes(buffer, bytesToRead);
 
       if (bytesRead > 0)
       {
+        if (firstData == 0)
+          firstData = millis();
         for (int i = 0; i < bytesRead; i++)
         {
           char c = (char)buffer[i];
-          if (isDelimiter(c))
+          int8_t nibble = -1;
+          if (c >= '0' && c <= '9')
+            nibble = c - '0';
+          else if (c >= 'a' && c <= 'f')
+            nibble = c - 'a' + 10;
+          else if (c >= 'A' && c <= 'F')
+            nibble = c - 'A' + 10;
+
+          if (nibble >= 0)
           {
-            if (!hexBuffer.isEmpty())
-            {
-              uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), nullptr, 16);
-              epd.SendData(byteValue);
-              hexBuffer.clear();
-            }
+            value = (value << 4) | nibble;
+            digits++;
           }
-          else
+          else if (digits > 0)
           {
-            hexBuffer += c;
+            epd.SendData(value);
+            value = 0;
+            digits = 0;
           }
         }
 
@@ -312,15 +328,17 @@ private:
       }
     }
 
-    if (!hexBuffer.isEmpty())
+    if (digits > 0)
     {
-      uint8_t byteValue = (uint8_t)strtol(hexBuffer.c_str(), nullptr, 16);
-      epd.SendData(byteValue);
+      epd.SendData(value);
     }
 
     free(buffer);
-    Serial.println("Showing image");
+    Serial.printf("[image] %d bytes of text received in %lu ms (first data after %lu ms), refreshing...\n",
+                  totalBytesProcessed, millis() - started, firstData ? firstData - started : 0);
+    unsigned long refreshStart = millis();
     epd.TurnOnDisplay();
+    Serial.printf("[image] panel refresh took %lu ms\n", millis() - refreshStart);
     epd.Sleep();
 
     return true;

@@ -490,6 +490,16 @@ function logDetail(entry) {
         if (entry.rssi) {
             parts.push(entry.rssi + ' dBm');
         }
+        if (entry.timing) {
+            // How long the frame waited for the server, by phase
+            const t = entry.timing;
+            const total = ['select_ms', 'fetch_ms', 'decode_ms', 'process_ms', 'pack_ms']
+                .reduce((sum, key) => sum + (t[key] || 0), 0);
+            parts.push('server ' + (total / 1000).toFixed(1) + ' s'
+                + ' (fetch ' + ((t.fetch_ms || 0) / 1000).toFixed(1)
+                + ', decode ' + ((t.decode_ms || 0) / 1000).toFixed(1)
+                + ', process ' + ((t.process_ms || 0) / 1000).toFixed(1) + ')');
+        }
     } else if (entry.event === 'settings_saved') {
         if (entry.changes) {
             parts.push(Object.keys(entry.changes)

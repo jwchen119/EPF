@@ -366,6 +366,17 @@ def process_and_download():
         return jsonify({"error": message}), 500
 
     try:
+        # Timed per phase and reported in the check-in event: the frame stays
+        # awake, radio on, for the whole of this, so it is worth watching.
+        clock = time.perf_counter()
+        timing = {}
+
+        def lap(name):
+            nonlocal clock
+            now = time.perf_counter()
+            timing[name] = int((now - clock) * 1000)
+            clock = now
+
         # Use the photo already chosen for this wake-up when there is one, so the
         # frame gets exactly what the settings page was showing as "next".
         if state.next_photo['asset'] and state.next_photo['album'] == album:
@@ -381,9 +392,13 @@ def process_and_download():
 
         asset_id = selected['id']
         tracking.mark_shown(asset_id)
+        lap('select_ms')
 
-        image = imaging.open_asset(io.BytesIO(immich.fetch_original(asset_id)),
-                                   selected.get('originalPath'))
+        original = immich.fetch_original(asset_id)
+        timing['original_bytes'] = len(original)
+        lap('fetch_ms')
+        image = imaging.open_asset(io.BytesIO(original), selected.get('originalPath'))
+        lap('decode_ms')
 
         settings_now = config.immich()
         processed = imaging.scale_img_in_memory(
@@ -395,7 +410,9 @@ def process_and_download():
             strength=settings_now['strength'],
         )
 
+        lap('process_ms')
         c_code = imaging.pack_bmp_for_panel(processed)
+        lap('pack_ms')
 
         state.last_photo.update({'asset_id': asset_id, 'shown_at': datetime.now(),
                                  'taken_at': immich.taken_at_text(selected)})
@@ -413,7 +430,8 @@ def process_and_download():
                         battery_pct=battery.percentage(reported_mv) if reported_mv else None,
                         mac=request.headers.get('X-Device-Mac'),
                         rssi=request.headers.get('X-Device-Rssi'),
-                        agent=request.headers.get('User-Agent'))
+                        agent=request.headers.get('User-Agent'),
+                        timing=timing)
 
         if reported_mv:
             # Sent on a thread: the frame gives up after 50 seconds and must not
