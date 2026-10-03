@@ -1,0 +1,24 @@
+# The image is the server only. Dockerfile copies the whole repository, so
+# everything that is not needed at runtime is excluded here -- above all the
+# .env that holds IMMICH_API_KEY and the bind-mounted runtime data, which
+# would otherwise be baked into a public image.
+.env
+.env.example
+config/
+photos/
+
+# Source control and development files
+.git/
+.gitattributes
+.gitignore
+.dockerignore
+CLAUDE.md
+README.md
+Dockerfile
+docker-compose.yml
+__pycache__/
+*.py[cod]
+
+# Firmware and enclosure: built elsewhere, never read by the server
+Arduino/
+CAD/
