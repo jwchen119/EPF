@@ -669,6 +669,13 @@ void setup()
 {
   // USB CDC (HWCDCSerial) must be begin()'d first; otherwise HWCDC::write() drops output because tx_ring_buf == NULL
   Serial.begin(115200);
+  // Serial is the USB Serial/JTAG port. When the frame is plugged into a PC
+  // that has no terminal open, the host's driver fills its own buffer once
+  // and then stops reading, and every Serial write would then block for up to
+  // 20 x 100 ms waiting for room: measured 92 s awake instead of 37 s. A
+  // 2 ms wait is plenty for a terminal that is actually reading; without one,
+  // output is dropped instead of stalling the frame.
+  Serial.setTxTimeoutMs(2);
   // Wait for the host to open the serial port so early output is not lost; the
   // loop exits as soon as a monitor attaches. After a power-on or a flash the
   // PlatformIO monitor needs several seconds to reopen the port, hence the long
