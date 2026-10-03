@@ -19,6 +19,16 @@
 #define SLEEP_INTERVAL 3600U           // Default sleep interval in seconds (1 hour)
 #define MIN_SLEEP_TIME 900U            // Minimum sleep time in seconds (15 minutes)
 
+// Failure handling. Consecutive failed wake-ups (no Wi-Fi, server unreachable,
+// download rejected) are counted in Preferences. The first QUIET_RETRIES keep
+// the current photo on screen and retry after MIN_SLEEP_TIME doubled each time
+// (15, 30, 60 minutes). The next failure draws the error screen once, and from
+// then on the frame sleeps ERROR_SLEEP_TIME between attempts to spare the
+// battery. A button press always retries at once and shows the error if it
+// fails again. A successful download resets the count.
+#define QUIET_RETRIES 3U
+#define ERROR_SLEEP_TIME 21600U        // 6 hours
+
 // Wake up source configuration
 #define WAKEUP_PIN GPIO_NUM_2                 // GPIO 2 for wake up
 #define WAKEUP_LEVEL ESP_GPIO_WAKEUP_GPIO_LOW // Wake up on low level

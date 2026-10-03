@@ -134,21 +134,21 @@ pio run -t upload       # flash over USB
 pio device monitor      # serial output at 115200 baud
 ```
 
-`platformio.ini` pulls in the ESP32-C6 board support (the pioarduino fork of the Espressif platform, since the upstream one does not support the C6 yet), the `min_spiffs` partition table and all libraries: ArduinoJson 7, AsyncTCP and ESPAsyncWebServer (ESP32Async forks), NTPClient and STM32duino ST25DV.
+`platformio.ini` pulls in the ESP32-C6 board support (the pioarduino fork of the Espressif platform, since the upstream one does not support the C6 yet), the `min_spiffs` partition table and all libraries: ArduinoJson 7, AsyncTCP and ESPAsyncWebServer (ESP32Async forks), NTPClient, STM32duino ST25DV and QRCode.
 
 ### Build with the Arduino IDE
 
 1. Install the ESP32 board package (3.x) and select **DFRobot FireBeetle 2 ESP32-C6**.
 2. Copy the `Arduino` folder somewhere and rename it to `epd7in3e`, so it matches `epd7in3e.ino`.
-3. Install from the Library Manager: ArduinoJson (7.x), Async TCP and ESP Async WebServer (the ESP32Async versions), STM32duino ST25DV.
+3. Install from the Library Manager: ArduinoJson (7.x), Async TCP and ESP Async WebServer (the ESP32Async versions), STM32duino ST25DV, QRCode (Richard Moore).
 4. Choose a partition scheme with at least 1.9 MB of app space (for example "Minimal SPIFFS"), then upload.
 
 The NFC library is required to compile even if no tag is fitted; at runtime the firmware simply skips NFC writes when it cannot find one.
 
 ### First-time setup
 
-1. Power the frame and hold the button for about 3 seconds while it boots. The serial monitor prints `long press` and the ESP32 starts an access point named `ESP32_ePAPER`.
-2. Connect to it; the setup page opens automatically (or browse to `http://4.3.2.1`).
+1. Power the frame and hold the button for about 3 seconds while it boots. The serial monitor prints `long press`, the panel shows a setup screen with the network name, the address and two QR codes, and the ESP32 starts an access point named `ESP32_ePAPER`. A frame with no saved network shows the same screen on its own.
+2. Connect to it (scan the first QR code, or pick the network by hand); the setup page opens automatically. If it does not, scan the second code or browse to `http://4.3.2.1`. The access point closes after 5 minutes.
 3. Pick your WiFi network, enter its password, and enter the server URL, for example `http://192.168.1.10:15001`. Up to five networks are remembered and tried in turn.
 4. Save. The frame connects, fetches the first photo and goes to sleep.
 
@@ -158,8 +158,10 @@ To change the settings later, hold the button during a reboot the same way. Save
 
 - Wakes on the schedule the server returns, or immediately on a short button press.
 - Below 3.05 V the frame clears the screen and sleeps for 24 hours to protect the battery.
-- A server error (HTTP 500) is retried up to five times, ten seconds apart. If the download still fails, or the server cannot be reached, the frame sleeps for 15 minutes and tries again, so it recovers soon after Immich or the server comes back. If the photo arrives but no schedule does, it sleeps for an hour.
-- Right after first setup the server answers with an error until an album is configured on the settings page. Once it is, either wait for the next 15-minute retry or press the button to fetch the first photo immediately.
+- A server error (HTTP 500) is retried up to five times, ten seconds apart within the same wake-up. If the photo arrives but no schedule does, the frame sleeps for an hour.
+- When a wake-up ends without a new photo (no Wi-Fi, server unreachable, download rejected), the frame keeps the current photo and quietly tries again after 15, 30 and then 60 minutes. If the fourth attempt also fails it draws an error screen explaining what went wrong, with the server address, network, battery level and when it will try next, and from then on checks every 6 hours to spare the battery. A button press always retries at once and shows the error screen if that fails too. The first successful photo clears the count.
+- Right after first setup the server answers with an error until an album is configured on the settings page. Once it is, either wait for the next retry or press the button to fetch the first photo immediately.
+- When the battery is empty the panel shows a charging reminder instead of going blank.
 - If the panel does not respond within 60 seconds the firmware gives up on the refresh instead of hanging.
 - With an NFC tag fitted, the tag reads "Updating..." while a new photo is being fetched and then carries the link to the photo on display. The tag is powered off during deep sleep.
 

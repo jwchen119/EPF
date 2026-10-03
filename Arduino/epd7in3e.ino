@@ -15,6 +15,7 @@
 #include <WifiCaptive.h>
 #include <filesystem.h>
 #include "nfc_writer.h"
+#include "status_screen.h"
 
 /* Pin Layout Description - P1
 E-PAPER DRIVER BOARD  <>  FireBeetle ESP32-C6
@@ -45,7 +46,10 @@ private:
   // SimpleWiFiManager wifiManager;
   Epd epd;
   NfcWriter nfcWriter;
+  StatusScreen screen{epd};
   String imageUrl = "";
+  String failReason = ""; // why this wake-up produced no photo, for the error screen
+  int batteryMv = 0;      // measured once per wake-up in checkVoltage()
 
   bool downloadImage()
   {
@@ -78,6 +82,7 @@ private:
       if (!http.begin(*secureClient, imageUrl + downloadPath))
       {
         Serial.println("Failed to initialize HTTPS connection");
+        failReason = "Could not start the HTTPS client";
         delete secureClient;
         return false;
       }
@@ -88,21 +93,14 @@ private:
       if (!http.begin(*basicClient, imageUrl + downloadPath))
       {
         Serial.println("Failed to initialize HTTP connection");
+        failReason = "Could not start the HTTP client";
         delete basicClient;
         return false;
       }
     }
 
-    // Add battery voltage to header
-    analogReadResolution(12);
-    int plusV = 0;
-    for (int i = 0; i < 50; i++)
-    {
-      plusV += analogReadMilliVolts(0);
-      delay(5);
-    }
-    int batteryVoltage = (plusV / 50) * 2;
-    http.addHeader("batteryCap", String(batteryVoltage));
+    // Battery voltage (millivolts) measured in checkVoltage() at boot
+    http.addHeader("batteryCap", String(batteryMv));
 
     // Collect response headers for NFC photo URL
     const char *headerKeys[] = {NFC_PHOTO_URL_HEADER};
@@ -115,9 +113,10 @@ private:
 
     // A 500 from the server, or a 202 while it is still processing, is retried
     // up to MAX_RETRIES times; any other failure gives up straight away.
+    int httpCode = 0;
     for (uint8_t i = 0; i < MAX_RETRIES && !success; i++)
     {
-      int httpCode = http.GET();
+      httpCode = http.GET();
 
       if (httpCode == HTTP_CODE_OK)
       {
@@ -204,6 +203,16 @@ private:
       }
     }
 
+    if (!success)
+    {
+      if (httpCode == HTTP_CODE_OK)
+        failReason = "The server answered, but the image data was incomplete or invalid";
+      else if (httpCode > 0)
+        failReason = "Server returned HTTP " + String(httpCode);
+      else
+        failReason = "Could not reach the server: " + http.errorToString(httpCode);
+    }
+
     http.end();
     delay(10);
     if (secureClient)
@@ -213,18 +222,15 @@ private:
 
     if (success)
     {
-      // Follow the server's schedule; if /sleep did not answer, fall back to
-      // the default interval rather than losing a day.
+      // A new photo is on the panel, so the failure count starts over. Follow
+      // the server's schedule; if /sleep did not answer, fall back to the
+      // default interval rather than losing a day.
+      preferences.putUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, 0);
       hibernate(sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL);
     }
-    else
-    {
-      // Try again soon so the frame recovers quickly once Immich or the server
-      // is back, instead of staying blank for 24 hours.
-      hibernate(MIN_SLEEP_TIME);
-    }
 
-    return success;
+    // Failed: the caller counts it and decides how long to sleep
+    return false;
   }
 
   // check if https
@@ -387,6 +393,10 @@ private:
   }
 
 public:
+  // False when the timer woke us. Errors are then kept off the panel until
+  // the quiet retries are used up; see failAndSleep().
+  bool manualWake = true;
+
   bool begin()
   {
     // Serial.begin() moved to the top of setup() so early diagnostics are not dropped
@@ -407,9 +417,13 @@ public:
       nfcWriter.writePlaceholder();
     }
 
+    // Preferences first: failAndSleep() needs them even if the panel fails
+    preferences.begin("data", false);
+
     if (epd.Init() != 0)
     {
       Serial.println(F("e-Paper init failed"));
+      failReason = "The e-Paper panel did not respond";
       return false;
     }
     Serial.println(F("e-Paper initialized successfully"));
@@ -417,17 +431,13 @@ public:
     // initialize spiffs
     fs_init();
 
-    // initialize preferences
-    preferences.begin("data", false);
-
     WiFi.mode(WIFI_STA);
 
     // Check configuration button
     if (shouldEnterConfigMode())
     {
       Serial.println(F("Config button pressed, entering config mode..."));
-      epd.Clear(EPD_7IN3E_WHITE);
-      // epd.Sleep();
+      showSetupScreen();
 
       bool res = WifiCaptivePortal.startPortal();
       if (res)
@@ -435,11 +445,12 @@ public:
         Serial.println(F("Config mode completed"));
         return true;
       }
-      // else {
-      //   epd.Clear(EPD_7IN3E_WHITE);
-      //   epd.Sleep();
-      //   return false;
-      // }
+      if (!WifiCaptivePortal.isSaved())
+      {
+        failReason = "Wi-Fi setup was not completed";
+        return false;
+      }
+      // Otherwise fall through and try the saved networks
     }
 
     // If button not pressed, try normal startup
@@ -451,13 +462,12 @@ public:
         preferences.putInt(PREFERENCES_CONNECT_WIFI_RETRY_COUNT, 1);
         return true;
       }
-      // else {
-      //   epd.Clear(EPD_7IN3E_WHITE);
-      //   epd.Sleep();
-      // }
+      failReason = "Could not connect to any saved Wi-Fi network";
     }
     else
     {
+      // Nothing saved yet: show how to reach the portal, then run it
+      showSetupScreen();
       WifiCaptivePortal.setResetSettingsCallback(resetDeviceCredentials);
       bool res = WifiCaptivePortal.startPortal();
       if (res)
@@ -465,11 +475,8 @@ public:
         preferences.putInt(PREFERENCES_CONNECT_WIFI_RETRY_COUNT, 1);
         return true;
       }
-      //   if (!res) {
-      //     epd.Clear(EPD_7IN3E_WHITE);
-      //     epd.Sleep();
+      failReason = "Wi-Fi setup was not completed";
     }
-    // }
     Serial.println(F("No valid WiFi configuration found - main"));
     return false;
   }
@@ -478,51 +485,159 @@ public:
   {
     Serial.println(F("Update method called"));
 
-    if (WiFi.status() == WL_CONNECTED)
+    if (WiFi.status() != WL_CONNECTED)
     {
-      Serial.println(F("WiFi Connected. Downloading image"));
-      if (downloadImage())
-      {
-        Serial.println(F("Image download successful"));
-      }
-      else
-      {
-        Serial.println(F("Image download failed"));
-      }
+      failReason = "Wi-Fi is not connected";
     }
     else
     {
-      Serial.println(F("WiFi not connected. Cannot download image"));
+      Serial.println(F("WiFi Connected. Downloading image"));
+      // Returns only on failure; on success it hibernates on the server's schedule
+      downloadImage();
     }
 
-    Serial.println(F("Entering sleep mode"));
-    hibernate(MIN_SLEEP_TIME);
+    Serial.print(F("No new photo this wake-up: "));
+    Serial.println(failReason);
+    failAndSleep();
+  }
+
+  // Every wake-up that produced no photo ends here. The failure is counted in
+  // Preferences, the error screen is drawn only when it is worth a full
+  // refresh, and the sleep grows with each failure (QUIET_RETRIES and
+  // ERROR_SLEEP_TIME in config.h). Never returns.
+  void failAndSleep()
+  {
+    uint8_t failures = preferences.getUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, 0);
+    if (failures < 255)
+      failures++;
+    preferences.putUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, failures);
+
+    uint32_t sleepSeconds = failures <= QUIET_RETRIES
+                                ? (uint32_t)MIN_SLEEP_TIME << (failures - 1)
+                                : (uint32_t)ERROR_SLEEP_TIME;
+
+    // Timer wake-ups keep the photo and retry quietly. The panel is redrawn
+    // only when someone pressed the button, or once when the quiet retries
+    // run out; after that the error is already on screen and stays.
+    bool showError = manualWake || failures == QUIET_RETRIES + 1;
+    Serial.printf("Consecutive failures: %u, next attempt in %lu s, error screen: %s\n",
+                  failures, (unsigned long)sleepSeconds, showError ? "yes" : "no");
+    if (showError)
+      showErrorScreen(sleepSeconds);
+    epd.Sleep(); // the failure paths never reach processImageData()'s Sleep()
+    hibernate(sleepSeconds);
+  }
+
+  static String humanDuration(uint32_t seconds)
+  {
+    if (seconds % 3600 == 0)
+    {
+      uint32_t hours = seconds / 3600;
+      return String(hours) + (hours == 1 ? " hour" : " hours");
+    }
+    return String(seconds / 60) + " minutes";
+  }
+
+  // Why there is no new photo, and what happens next. A full refresh, so it
+  // is only called from failAndSleep() once that has decided it is worth it.
+  void showErrorScreen(uint32_t sleepSeconds)
+  {
+    const uint16_t left = 40;
+    const uint16_t width = EPD_WIDTH - 2 * left;
+    screen.clear();
+    uint16_t y = screen.text(left, 40, "Photo update failed", 3, EPD_7IN3E_RED);
+    y += 8;
+    y = screen.paragraph(left, y, failReason.c_str(), width, 2);
+    y += 8;
+
+    String line = "Server: " + (imageUrl.length() ? imageUrl : String("not set"));
+    y = screen.paragraph(left, y, line.c_str(), width, 2);
+    line = "Wi-Fi: ";
+    if (WiFi.status() == WL_CONNECTED)
+      line += WiFi.SSID() + " (" + String(WiFi.RSSI()) + " dBm, " + WiFi.localIP().toString() + ")";
+    else
+      line += "not connected";
+    y = screen.paragraph(left, y, line.c_str(), width, 2);
+    line = "Battery: " + String(batteryMv / 1000.0f, 2) + " V";
+    y = screen.text(left, y, line.c_str(), 2);
+    y += 8;
+
+    line = "Next attempt in " + humanDuration(sleepSeconds) + ". Press the button to retry now.";
+    y = screen.paragraph(left, y, line.c_str(), width, 2);
+    screen.text(left, y, "Hold button 3 s at boot to change settings.", 2);
+
+    screen.text(left, EPD_HEIGHT - 20, "Firmware built " __DATE__, 1);
+    screen.show();
+  }
+
+  // How to reach the captive portal. Drawn before the access point starts,
+  // for phones that do not open the page by themselves and for computers.
+  void showSetupScreen()
+  {
+    const uint16_t left = 40;
+    const uint16_t width = 440; // the right side is for the QR codes
+    screen.clear();
+    uint16_t y = screen.text(left, 32, "Photo frame setup", 3);
+    y += 12;
+    y = screen.text(left, y, "1. Join this Wi-Fi network:", 2);
+    y = screen.text(left + 48, y, WIFI_SSID, 2, EPD_7IN3E_BLUE);
+    y += 4;
+    y = screen.text(left, y, "2. Open the setup page:", 2);
+    y = screen.text(left + 48, y, LocalIPURL, 2, EPD_7IN3E_BLUE);
+    y += 12;
+    y = screen.paragraph(left, y, "Phones usually open the page by themselves. If not, scan the second code or type the address.", width, 2);
+    y += 8;
+    String line = "Closes after " + String(CONFIG_TIMEOUT / 60000) + " minutes.";
+    screen.text(left, y, line.c_str(), 2);
+
+    // The Wi-Fi join string phones understand, and the portal address
+    const char *apPassword = WIFI_PASSWORD;
+    String wifiQr = apPassword == nullptr
+                        ? String("WIFI:T:nopass;S:") + WIFI_SSID + ";;"
+                        : String("WIFI:T:WPA;S:") + WIFI_SSID + ";P:" + apPassword + ";;";
+    const uint16_t qx = 560;
+    const uint8_t modulePx = 5; // 33 modules x 5 px = 165 px
+    uint16_t side = screen.qr(qx, 56, wifiQr.c_str(), modulePx);
+    screen.text(qx, 56 + side + 8, "1. Wi-Fi", 2);
+    side = screen.qr(qx, 272, LocalIPURL, modulePx);
+    screen.text(qx, 272 + side + 8, "2. Setup page", 2);
+
+    String footer = "Battery " + String(batteryMv / 1000.0f, 2) + " V   Firmware built " __DATE__;
+    screen.text(left, EPD_HEIGHT - 32, footer.c_str(), 1);
+    screen.show();
   }
 
   // Check battery voltage level
+  // Average of 50 ADC samples on pin 0, doubled for the 1:2 divider
   bool checkVoltage()
   {
     analogReadResolution(12);
-    int analogVolts = analogReadMilliVolts(0);
-    // Multiply by 2 due to voltage divider
-    Serial.print("BAT millivolts value = ");
-    Serial.print(analogVolts * 2);
-    Serial.println("mV");
-    delay(50);
-    // Return false if battery voltage is below 3.05V
-    if (analogVolts * 2 < 3050)
+    long sum = 0;
+    for (int i = 0; i < 50; i++)
     {
-      return false;
+      sum += analogReadMilliVolts(0);
+      delay(5);
     }
-    return true;
+    batteryMv = (sum / 50) * 2;
+    Serial.print("BAT millivolts value = ");
+    Serial.print(batteryMv);
+    Serial.println("mV");
+    // Return false if battery voltage is below 3.05V
+    return batteryMv >= 3050;
   }
 
-  // Clear the e-paper display
-  void clearScreen()
+  // Shown instead of a blank panel when the battery is too low to carry on
+  void showLowBatteryScreen()
   {
     epd.Init();
     delay(1000);
-    epd.Clear(EPD_7IN3E_WHITE);
+    screen.clear();
+    uint16_t y = screen.text(40, 160, "Battery empty", 3, EPD_7IN3E_RED);
+    y += 16;
+    String line = "Battery: " + String(batteryMv / 1000.0f, 2) + " V. Please charge the frame.";
+    y = screen.paragraph(40, y, line.c_str(), EPD_WIDTH - 80, 2);
+    screen.paragraph(40, y, "It checks again in 24 hours, or press the button after charging.", EPD_WIDTH - 80, 2);
+    screen.show();
     epd.Sleep();
   }
 };
@@ -564,12 +679,13 @@ void setup()
   {
     Serial.println("First boot or reset");
   }
+  epaperManager.manualWake = (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER);
 
   if (!epaperManager.checkVoltage())
   {
     Serial.println(F("Battery low voltage (< 3.0V)"));
     Serial.println(F("Sleep for 24hr"));
-    epaperManager.clearScreen();
+    epaperManager.showLowBatteryScreen();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
     delay(1000);
@@ -583,11 +699,10 @@ void setup()
   }
   else
   {
+    // No Wi-Fi, no panel, or setup abandoned: count it and sleep with
+    // back-off instead of restarting in a loop that never sleeps.
     Serial.println(F("Begin failed"));
-    epaperManager.clearScreen();
-
-    delay(30000);
-    ESP.restart();
+    epaperManager.failAndSleep();
   }
 }
 
