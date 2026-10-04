@@ -21,16 +21,20 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 BUILD = HERE.parents[1] / 'Arduino' / '.pio' / 'build' / 'firebeetle2_esp32c6'
 
+# Must match FW_NAME in Arduino/config.h: a frame that reports this name over
+# Improv Serial is recognised as running this firmware, so the installer
+# offers "Update" and writes without erasing the flash.
+FIRMWARE_NAME = 'EPF photo frame firmware'
+
 def manifest(name, version, parts, prompt_erase):
     return {
         'name': name,
         'version': version,
-        # ESP Web Tools treats a board without Improv as a new install and
-        # erases the flash first unless asked to prompt. The update manifest
-        # prompts so the user can keep the NVS settings; the factory one
-        # rewrites everything anyway.
+        # A frame without Improv (firmware before 1.2.0) counts as a new
+        # install and would be erased first unless asked to prompt. The update
+        # manifest prompts so the user can keep the NVS settings; the factory
+        # one rewrites everything anyway.
         'new_install_prompt_erase': prompt_erase,
-        'new_install_improv_wait_time': 0,
         'builds': [{'chipFamily': 'ESP32-C6', 'parts': parts}],
     }
 
@@ -60,7 +64,7 @@ def main():
             sums.write(f'{digest} *{name}\n')
 
     (target / 'update.json').write_text(json.dumps(manifest(
-        'EPF photo frame firmware (update)', args.version,
+        FIRMWARE_NAME, args.version,
         [{'path': 'app.bin', 'offset': 0x10000}], True), indent=2) + '\n', newline='\n')
     (target / 'factory.json').write_text(json.dumps(manifest(
         'EPF photo frame firmware (new frame)', args.version,

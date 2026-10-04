@@ -199,6 +199,10 @@ bool WifiCaptive::startPortal()
     while (1)
     {
         _dnsServer->processNextRequest();
+        if (_idleCallback)
+        {
+            _idleCallback();
+        }
 
         // Check for timeout
         if (millis() - startTime >= CONFIG_TIMEOUT)
@@ -319,6 +323,10 @@ uint8_t WifiCaptive::waitForConnectResult(uint32_t timeout)
 
     while (millis() < timeoutmillis)
     {
+        if (_idleCallback)
+        {
+            _idleCallback();
+        }
         status = WiFi.status();
         // @todo detect additional states, connect happens, then dhcp then get ip, there is some delay here, make sure not to timeout if waiting on IP
         if (status == WL_CONNECTED || status == WL_CONNECT_FAILED)
@@ -334,6 +342,11 @@ uint8_t WifiCaptive::waitForConnectResult(uint32_t timeout)
 uint8_t WifiCaptive::waitForConnectResult()
 {
     return waitForConnectResult(CONNECTION_TIMEOUT);
+}
+
+void WifiCaptive::setIdleCallback(std::function<void()> func)
+{
+    _idleCallback = func;
 }
 
 void WifiCaptive::setResetSettingsCallback(std::function<void()> func)

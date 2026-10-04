@@ -16,6 +16,7 @@
 #include <filesystem.h>
 #include "nfc_writer.h"
 #include "status_screen.h"
+#include "improv_serial.h"
 
 /* Pin Layout Description - P1
 E-PAPER DRIVER BOARD  <>  FireBeetle ESP32-C6
@@ -39,6 +40,7 @@ SDA                       <>  19   // Chip select control
 */
 
 Preferences preferences;
+ImprovSerial improv; // answers the web installer over USB
 
 class EpaperManager
 {
@@ -440,8 +442,9 @@ public:
       nfcWriter.writePlaceholder();
     }
 
-    // Preferences first: failAndSleep() needs them even if the panel fails
-    preferences.begin("data", false);
+    // Preferences are opened at the top of setup(): the USB installer may
+    // write the server URL before begin() runs, and failAndSleep() needs them
+    // even if the panel fails.
 
     if (epd.Init() != 0)
     {
@@ -692,11 +695,26 @@ void setup()
   // On battery there is no USB host, so there is nothing to wait for. The
   // plug detection needs a few milliseconds of USB frames to settle first.
   delay(20);
+  // The web installer (ESP Web Tools) asks over Improv Serial who the firmware
+  // is, and gives a device only 1.5 s to answer without resetting it first.
+  // So the frame answers at any point of a wake-up: the panel's BUSY wait
+  // (most of the ~36 s) and the Wi-Fi waits service it through these hooks,
+  // and a USB-attached boot listens for a moment before carrying on, which
+  // covers the installer's check right after it has flashed us.
+  preferences.begin("data", false);
+  improv.begin(Serial, FW_NAME, FW_VERSION, "ESP32-C6", "EPF photo frame");
+  epd_busy_hook = []() { improv.poll(); };
+  WifiCaptivePortal.setIdleCallback([]() { improv.poll(); });
   if (Serial.isPlugged())
   {
     for (uint32_t t0 = millis(); !Serial && (millis() - t0) < serialWaitMs;)
     {
       delay(10);
+    }
+    for (uint32_t t0 = millis(); (millis() - t0) < IMPROV_WAIT_MS;)
+    {
+      improv.poll();
+      delay(5);
     }
   }
   Serial.println();

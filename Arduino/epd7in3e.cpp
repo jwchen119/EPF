@@ -32,6 +32,8 @@
 #include <stdlib.h>
 #include "epd7in3e.h"
 
+void (*epd_busy_hook)(void) = nullptr;
+
 Epd::~Epd() {
 };
 
@@ -186,6 +188,10 @@ void Epd::EPD_7IN3E_BusyHigh(void) // If BUSYN=0 then waiting
     unsigned long start = millis();
     while (!DigitalRead(BUSY_PIN))
     {
+        if (epd_busy_hook)
+        {
+            epd_busy_hook();
+        }
         if (millis() - start >= BUSY_TIMEOUT_MS)
         {
             Serial.println(F("[EPD] BUSY timeout after 60s - panel not responding"));

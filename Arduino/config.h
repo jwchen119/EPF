@@ -4,6 +4,15 @@
 // File system configuration
 #define CONFIG_FILE "/wifi_config.json"
 
+// Reported over Improv Serial to the web installer, which compares it with the
+// manifest: same name means "update, keep the flash"; the version decides
+// whether an update is offered at all. Bump it with every release.
+#define FW_NAME "EPF photo frame firmware"
+#define FW_VERSION "1.2.0"
+// How long a USB-attached boot keeps answering Improv before carrying on, so
+// the installer's identity check right after flashing gets its reply.
+#define IMPROV_WAIT_MS 2000U
+
 // WiFi and HTTP configuration
 #define HTTP_TIMEOUT 50000U // HTTP request timeout in ms
 #define RETRY_DELAY 10000U  // Delay between retries in ms

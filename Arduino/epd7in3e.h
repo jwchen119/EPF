@@ -54,6 +54,11 @@ Color Index
 // #define EPD_7IN3F_ORANGE  0x6	///	110
 #define EPD_7IN3E_CLEAN 0x7 ///	111   unavailable  Afterimage
 
+// Called repeatedly while the driver waits for the panel's BUSY line (up to
+// ~30 s per refresh), so the sketch can keep answering the USB installer
+// (Improv Serial) during the longest wait of a wake-up. Set by the sketch.
+extern void (*epd_busy_hook)(void);
+
 class Epd : EpdIf
 {
 public:

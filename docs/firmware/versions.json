@@ -1,6 +1,15 @@
 {
-  "latest": "1.1.1",
+  "latest": "1.2.0",
   "versions": [
+    {
+      "version": "1.2.0",
+      "date": "2026-10-04",
+      "notes": {
+        "en": "Improv Serial identification: the web installer recognises the frame and updates it without erasing the settings.",
+        "zh-TW": "支援 Improv Serial 識別：網頁安裝器可認出相框，升級時不清除設定。"
+      },
+      "server": "jwchen119/epf:1.2.0"
+    },
     {
       "version": "1.1.1",
       "date": "2026-10-04",

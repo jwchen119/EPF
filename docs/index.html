@@ -268,7 +268,7 @@
       'help.update': '只寫入程式區。已經在使用的相框請選這個，刷完直接繼續運作。',
       'help.factory': '寫入 bootloader、分割表與程式。給第一次燒錄的板子，或已無法開機、需要重頭來過的相框。',
       'hint.title': '提醒',
-      'hint.body': '按下安裝後會先出現「Erase device」的選項，請保持不勾選再按 Next，設定才會保留。',
+      'hint.body': '相框韌體 1.2.0 以上會被安裝器直接認出，按 Update 即寫入。較舊的韌體會先出現「Erase device」的選項，請保持不勾選再按 Next，設定才會保留。',
       'warn.title': '會清除所有使用者設定',
       'warn.body': '完整安裝會抹除整顆 flash，包括已儲存的 Wi-Fi、伺服器網址與重試計數。刷完後相框會進入設定畫面，需要重新連線設定。只有全新或無法開機的板子才需要這個選項。',
       'install.update': '升級到 {v}',
@@ -309,7 +309,7 @@
       'help.update': 'Writes the application only. Pick this for a frame that is already in use; it carries on as before.',
       'help.factory': 'Writes the bootloader, partition table and application. For a board flashed for the first time, or a frame that no longer boots and needs a fresh start.',
       'hint.title': 'Note',
-      'hint.body': 'After you click install you will be asked about “Erase device”. Leave it unticked and click Next, otherwise the settings are wiped.',
+      'hint.body': 'A frame on firmware 1.2.0 or later is recognised by the installer and updated straight away. Older firmware is asked about “Erase device” first: leave it unticked and click Next, otherwise the settings are wiped.',
       'warn.title': 'Erases all user settings',
       'warn.body': 'A full install wipes the whole flash, including the saved Wi-Fi, the server URL and the retry counter. Afterwards the frame shows its setup screen and has to be set up again. Only a new board, or one that no longer boots, needs this.',
       'install.update': 'Update to {v}',
@@ -452,6 +452,23 @@
   document.querySelectorAll('.lang button').forEach(b => {
     b.addEventListener('click', () => applyLang(b.dataset.lang));
   });
+
+  // The installer's dashboard always lists "Connect to Wi-Fi" / "Change Wi-Fi"
+  // (and "Visit Device" when the firmware offers a URL). The frame is set up
+  // through its own captive portal, so those entries only mislead here: hide
+  // them inside the installer dialog as it renders.
+  function hideWifiEntries() {
+    document.querySelectorAll('ewt-install-dialog').forEach(dialog => {
+      const root = dialog.shadowRoot;
+      if (!root) return;
+      root.querySelectorAll('ew-list-item').forEach(item => {
+        const text = (item.textContent || '').trim();
+        if (/Wi-Fi|Visit Device/i.test(text)) item.style.display = 'none';
+      });
+    });
+  }
+  new MutationObserver(hideWifiEntries).observe(document.body, { childList: true, subtree: true });
+  setInterval(hideWifiEntries, 300);
 
   // Web Serial is the one hard requirement
   if ('serial' in navigator) {
