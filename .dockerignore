@@ -13,7 +13,7 @@ photos/
 .gitignore
 .dockerignore
 CLAUDE.md
-README.md
+README*.md
 Dockerfile
 docker-compose.yml
 __pycache__/
