@@ -11,7 +11,7 @@ from datetime import datetime
 
 import numpy as np
 import rawpy
-from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps, UnidentifiedImageError
 from pillow_heif import register_heif_opener
 from cpy import convert_image, load_scaled
 
@@ -253,15 +253,47 @@ def pack_bmp_for_panel(bmp_io):
     bmp_io.seek(0)
     return convert_to_c_code_in_memory(Image.open(bmp_io))
 
+# Every RAW extension rawpy is asked to handle by name. The list is not
+# exhaustive - a camera missing from it is caught by the fallback in open_asset.
+RAW_SUFFIXES = ('.raw', '.dng', '.arw', '.cr2', '.cr3', '.nef', '.nrw', '.orf',
+                '.raf', '.rw2', '.pef', '.srw', '.sr2', '.3fr', '.erf', '.iiq')
+
+def _open_raw(data):
+    """ A PIL image from RAW bytes, whatever the file is called """
+    data.seek(0)
+    with rawpy.imread(data) as raw:
+        return Image.fromarray(raw.postprocess(use_camera_wb=True, use_auto_wb=False))
+
 def open_asset(data, original_path):
     """ A PIL image from downloaded bytes, decoding RAW and HEIC as needed """
     lowered = (original_path or '').lower()
-    if lowered.endswith(('.raw', '.dng', '.arw', '.cr2', '.nef')):
-        with rawpy.imread(data) as raw:
-            return Image.fromarray(raw.postprocess(use_camera_wb=True, use_auto_wb=False))
+    if lowered.endswith(RAW_SUFFIXES):
+        return _open_raw(data)
     if lowered.endswith('.heic'):
         return Image.open(data).convert("RGB")
-    return Image.open(data)
+    try:
+        image = Image.open(data)
+    except UnidentifiedImageError:
+        # PIL reports the BytesIO object rather than the file, which says nothing
+        # about what went wrong. The usual cause is a RAW file from a camera not
+        # in RAW_SUFFIXES, so try the decoder that does not go by the name, and
+        # otherwise name the asset that cannot be shown.
+        try:
+            return _open_raw(data)
+        except Exception as error:
+            raise ValueError(
+                f"Unsupported image format: {original_path or 'unknown file'}") from error
+    # Image.open only reads the header. Decoding now means a truncated or damaged
+    # file fails here, where the caller can fall back to the preview, rather than
+    # halfway through the pipeline.
+    image.load()
+    return image
+
+def open_preview(data):
+    """ A PIL image from Immich's preview rendering, which is always JPEG or WebP """
+    image = Image.open(data)
+    image.load()
+    return image
 
 # --- unused by the server, kept from the original ---------------------------
 

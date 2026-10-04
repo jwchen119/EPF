@@ -366,8 +366,9 @@ def render_asset(selected):
     """
     Fetch, process and pack one asset for the panel.
 
-    Returns (BytesIO of C-array text, timing) where timing holds the
-    milliseconds of each step and the size of the original.
+    Returns (BytesIO of C-array text, timing, fallback) where timing holds the
+    milliseconds of each step and the size of the original, and fallback is
+    why the original could not be used (None when it could).
     """
     timing = {}
     clock = time.perf_counter()
@@ -378,10 +379,24 @@ def render_asset(selected):
         timing[name] = int((now - clock) * 1000)
         clock = now
 
-    original = immich.fetch_original(selected['id'])
+    asset_id = selected['id']
+    original = immich.fetch_original(asset_id)
     timing['original_bytes'] = len(original)
     lap('fetch_ms')
-    image = imaging.open_asset(io.BytesIO(original), selected.get('originalPath'))
+    # Immich's preview stands in when the original cannot be decoded (AVIF,
+    # JPEG XL, a damaged file): it is always JPEG or WebP and still larger than
+    # the panel, and a photo beats a wake-up with nothing to show.
+    fallback = None
+    try:
+        image = imaging.open_asset(io.BytesIO(original), selected.get('originalPath'))
+    except Exception as error:
+        fallback = str(error)
+        print(f"Original of {asset_id} unreadable, using the preview: {error}")
+        try:
+            image = imaging.open_preview(io.BytesIO(immich.fetch_thumbnail(asset_id)[0]))
+        except Exception:
+            # Report why the original failed, which is the actual problem
+            raise error
     lap('decode_ms')
 
     settings_now = config.immich()
@@ -396,7 +411,7 @@ def render_asset(selected):
     lap('process_ms')
     c_code = imaging.pack_bmp_for_panel(processed)
     lap('pack_ms')
-    return c_code, timing
+    return c_code, timing, fallback
 
 _prepare_lock = threading.Lock()
 
@@ -424,13 +439,14 @@ def prepare_next_photo():
                 return
 
             settings_used = render_settings()
-            c_code, timing = render_asset(asset)
+            c_code, timing, fallback = render_asset(asset)
             if state.next_photo['asset'] is asset and settings_used == render_settings():
                 state.next_photo['rendered'] = {
                     'asset_id': asset['id'],
                     'c_code': c_code.getvalue(),
                     'settings': settings_used,
                     'timing': timing,
+                    'preview_fallback': fallback,
                 }
                 total = sum(value for key, value in timing.items() if key.endswith('_ms'))
                 print(f"Prepared next photo {asset['id']} in {total} ms")
@@ -475,6 +491,10 @@ def process_and_download():
         eventlog.record('error', where='download', message=message, ip=eventlog.client_ip())
         return jsonify({"error": message}), 500
 
+    # Named in the error events below, so a photo that cannot be decoded can be
+    # found in Immich instead of only being reported as a BytesIO object.
+    asset_id = None
+
     try:
         # Timed per phase and reported in the check-in event: the frame stays
         # awake, radio on, for the whole of this, so it is worth watching.
@@ -510,9 +530,10 @@ def process_and_download():
         if rendered and rendered['asset_id'] == asset_id \
                 and rendered['settings'] == render_settings():
             c_code = io.BytesIO(rendered['c_code'])
+            fallback = rendered.get('preview_fallback')
             timing['prerendered'] = True
         else:
-            c_code, render_timing = render_asset(selected)
+            c_code, render_timing, fallback = render_asset(selected)
             timing.update(render_timing)
             timing['prerendered'] = False
 
@@ -537,7 +558,9 @@ def process_and_download():
                         # awake before this request, and what woke the frame
                         uptime_ms=_int_header('X-Uptime-Ms'),
                         wake=request.headers.get('X-Wake'),
-                        timing=timing)
+                        timing=timing,
+                        # Why the photo came from Immich's preview, if it did
+                        preview_fallback=fallback)
 
         if reported_mv:
             # Sent on a thread: the frame gives up after 50 seconds and must not
@@ -550,10 +573,12 @@ def process_and_download():
         return response
 
     except immich.ImmichError as error:
-        eventlog.record('error', where='download', message=error.message, ip=eventlog.client_ip())
+        eventlog.record('error', where='download', message=error.message,
+                        asset_id=asset_id, ip=eventlog.client_ip())
         return jsonify({"error": error.message}), error.status
     except Exception as error:
-        eventlog.record('error', where='download', message=str(error), ip=eventlog.client_ip())
+        eventlog.record('error', where='download', message=str(error),
+                        asset_id=asset_id, ip=eventlog.client_ip())
         return jsonify({"error": str(error)}), 500
 
 @app.route('/sleep', methods=['GET'])

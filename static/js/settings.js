@@ -507,6 +507,10 @@ function logDetail(entry) {
                         + ', decode ' + ((t.decode_ms || 0) / 1000).toFixed(1)
                         + ', process ' + ((t.process_ms || 0) / 1000).toFixed(1) + ')'));
         }
+        if (entry.preview_fallback) {
+            // The photo was shown, but from Immich's preview; the reason says why
+            parts.push(t('log.previewFallback') + ': ' + entry.preview_fallback);
+        }
     } else if (entry.event === 'settings_saved') {
         if (entry.changes) {
             parts.push(Object.keys(entry.changes)
@@ -520,6 +524,10 @@ function logDetail(entry) {
         parts.push(entry.reason);
     } else if (entry.event === 'error' && entry.message) {
         parts.push(entry.message);
+        if (entry.asset_id) {
+            // Enough of the id to find the photo in Immich
+            parts.push(entry.asset_id.slice(0, 8));
+        }
     }
     return parts.join(' \u00b7 ');
 }
