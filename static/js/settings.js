@@ -490,6 +490,11 @@ function logDetail(entry) {
         if (entry.rssi) {
             parts.push(entry.rssi + ' dBm');
         }
+        if (typeof entry.uptime_ms === 'number') {
+            // How long the frame had been awake when it asked
+            parts.push('awake ' + (entry.uptime_ms / 1000).toFixed(1) + ' s before request'
+                + (entry.wake ? ' (' + entry.wake + ' wake)' : ''));
+        }
         if (entry.timing) {
             // How long the frame waited for the server, by phase
             const t = entry.timing;

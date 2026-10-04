@@ -324,9 +324,14 @@ def upcoming_photo():
     """
     album = config.immich()['album']
     try:
-        if request.method == 'POST' or not state.next_photo['asset'] \
-                or state.next_photo['album'] != album:
-            immich.refresh_next_photo()
+        # Wait for a preparation already under way rather than choosing a second
+        # photo in parallel and overwriting the one it is rendering
+        with _prepare_lock:
+            needs_choice = request.method == 'POST' or not state.next_photo['asset'] \
+                or state.next_photo['album'] != album
+            if needs_choice:
+                immich.refresh_next_photo()
+        if needs_choice:
             start_preparing()
     except immich.ImmichError as error:
         eventlog.record('error', where='next', message=error.message, ip=eventlog.client_ip())
@@ -441,6 +446,13 @@ def start_preparing():
 
 # ------------------------------------------------- the contract with the frame
 
+def _int_header(name):
+    """ A numeric request header, or None when absent or malformed """
+    try:
+        return int(request.headers.get(name))
+    except (TypeError, ValueError):
+        return None
+
 @app.route('/download', methods=['GET'])
 def process_and_download():
     """
@@ -521,6 +533,10 @@ def process_and_download():
                         mac=request.headers.get('X-Device-Mac'),
                         rssi=request.headers.get('X-Device-Rssi'),
                         agent=request.headers.get('User-Agent'),
+                        # Sent by firmware from October 2026 on: milliseconds
+                        # awake before this request, and what woke the frame
+                        uptime_ms=_int_header('X-Uptime-Ms'),
+                        wake=request.headers.get('X-Wake'),
                         timing=timing)
 
         if reported_mv:

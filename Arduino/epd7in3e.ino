@@ -101,6 +101,11 @@ private:
 
     // Battery voltage (millivolts) measured in checkVoltage() at boot
     http.addHeader("batteryCap", String(batteryMv));
+    // Telemetry the server records with the check-in: how long the frame has
+    // been awake before asking, and what woke it. Lets the time before the
+    // request be measured on battery, where no serial port is available.
+    http.addHeader("X-Uptime-Ms", String(millis()));
+    http.addHeader("X-Wake", manualWake ? "manual" : "timer");
 
     // Collect response headers for NFC photo URL
     const char *headerKeys[] = {NFC_PHOTO_URL_HEADER};
@@ -684,9 +689,15 @@ void setup()
   esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
   const uint32_t serialWaitMs =
       (wakeup_reason == ESP_SLEEP_WAKEUP_UNDEFINED) ? SERIAL_WAIT_BOOT_MS : SERIAL_WAIT_WAKE_MS;
-  for (uint32_t t0 = millis(); !Serial && (millis() - t0) < serialWaitMs;)
+  // On battery there is no USB host, so there is nothing to wait for. The
+  // plug detection needs a few milliseconds of USB frames to settle first.
+  delay(20);
+  if (Serial.isPlugged())
   {
-    delay(10);
+    for (uint32_t t0 = millis(); !Serial && (millis() - t0) < serialWaitMs;)
+    {
+      delay(10);
+    }
   }
   Serial.println();
   Serial.print(F("=== boot: serial up after "));
