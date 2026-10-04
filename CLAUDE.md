@@ -92,6 +92,10 @@ Deep sleep wakes on the timer or on GPIO 2 going low (`ext1`). `epd.Sleep()` bef
 
 `WifiCaptive*` files are adapted from [TRMNL firmware](https://github.com/usetrmnl/firmware/tree/main/lib/wificaptive); `epd7in3e.*` and `epdif.*` are Waveshare vendor drivers. Prefer keeping local edits minimal and obvious in all of these.
 
+## Web installer (`docs/`)
+
+`docs/` is served by GitHub Pages at https://jwchen119.github.io/EPF/ (Settings → Pages → `main` / `docs`). `index.html` is a static, self-contained page (zh-TW/en strings in one dictionary, `?lang=` or the toggle, stored in `localStorage`) around two [ESP Web Tools](https://esphome.github.io/esp-web-tools/) install buttons whose `manifest` attribute is switched by the version selector. `firmware/versions.json` lists releases (newest first, `latest`); `firmware/v<version>/` holds `app.bin` (application, 0x10000), `factory.bin` (combined image, 0x0), `SHA256SUMS.txt` and the two manifests. **ESP Web Tools treats a board that does not speak Improv as a new install and erases the whole flash first unless the manifest sets `new_install_prompt_erase: true`**, so `update.json` prompts (the page tells the user to leave "Erase device" unticked, which keeps NVS) while `factory.json` does not; both set `new_install_improv_wait_time: 0` because the firmware has no Improv. Publish a release with `python docs/firmware/add_version.py <version> --notes-en ... --notes-zh ...` after `pio run`; `.dockerignore` keeps `docs/` out of the server image. `README.zh-TW.md` is a translation of `README.md` and must be updated together with it.
+
 ## Conventions
 
 Everything committed to this repo is written in **English** — code, comments, identifiers, commit messages, docs — because changes may be submitted upstream as merge requests. Pre-existing Traditional Chinese comments in `cpy.pyx` and `Arduino/button.h` are the original author's; leave them alone, but write new comments in English.

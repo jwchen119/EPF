@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EPF Firmware Installer</title>
+<meta name="description" content="Install or update the EPF e-paper photo frame firmware from your browser.">
+<!--
+  Web installer for the EPF e-paper photo frame (ESP32-C6).
+
+  Everything on this page is static. The install button is ESP Web Tools
+  (https://esphome.github.io/esp-web-tools/), which flashes the parts listed
+  in a manifest over Web Serial. The manifests and firmware images live in
+  firmware/<version>/ and the list of versions in firmware/versions.json;
+  docs/firmware/add_version.py adds a new release there.
+
+  Two manifests per version:
+    factory.json  - the combined image at 0x0; erases everything (settings
+                    included) and is what a brand-new board needs.
+    update.json   - the application only at 0x10000, so the Wi-Fi and server
+                    settings in NVS survive. ESP Web Tools treats a board that
+                    does not speak Improv as a new install and would erase the
+                    flash first, so this manifest asks instead and the user
+                    leaves the "Erase device" box unticked.
+-->
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #5c6670;
+    --line: #e1dfd8;
+    --accent: #0b6e4f;
+    --accent-text: #ffffff;
+    --warn-bg: #fff6e0;
+    --warn-line: #e6b64c;
+    --danger: #a33a2b;
+    --code-bg: #efede7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15181c;
+      --card: #1e2227;
+      --text: #e6e6e3;
+      --muted: #9aa3ad;
+      --line: #2e343b;
+      --accent: #3fb389;
+      --accent-text: #0e1b16;
+      --warn-bg: #2b2616;
+      --warn-line: #a3843a;
+      --danger: #e0806f;
+      --code-bg: #272c33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 16px; }
+  header .wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; min-height: 60px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px;
+  }
+  header h1 { font-size: 1.1rem; margin: 0; font-weight: 600; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  .lang button {
+    background: none; border: 1px solid var(--line); color: var(--text);
+    padding: 4px 10px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 0.9rem;
+  }
+  .lang button[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  main { padding: 24px 0 48px; }
+  h2 { font-size: 1.35rem; margin: 32px 0 8px; }
+  h3 { font-size: 1.05rem; margin: 0 0 8px; }
+  p { margin: 8px 0; }
+  .lead { font-size: 1.05rem; color: var(--muted); }
+  .notice {
+    background: var(--warn-bg); border: 1px solid var(--warn-line);
+    border-radius: 8px; padding: 12px 14px; margin: 16px 0;
+  }
+  .hidden { display: none !important; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .card .fill { flex: 1; }
+  .tag { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .danger { color: var(--danger); }
+  .btn {
+    display: inline-block; background: var(--accent); color: var(--accent-text);
+    border: 0; border-radius: 8px; padding: 10px 18px; font: inherit; font-weight: 600;
+    cursor: pointer; width: 100%;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  select {
+    font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); min-width: 160px;
+  }
+  .version-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 4px; }
+  .version-notes { color: var(--muted); }
+  ol, ul { padding-left: 1.3em; }
+  li { margin: 6px 0; }
+  code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.92em; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 8px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: var(--accent); }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; padding: 20px 0; }
+  footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; }
+  esp-web-install-button { display: block; }
+</style>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>EPF <span data-i18n="title.sub">電子紙相框 · 韌體安裝</span></h1>
+    <div class="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="zh-TW" aria-pressed="true">繁體中文</button>
+      <button type="button" data-lang="en" aria-pressed="false">English</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p class="lead" data-i18n="lead">直接從瀏覽器把韌體寫入相框的 ESP32-C6，不需要安裝任何軟體。</p>
+
+  <div class="notice" id="browser-warning">
+    <strong data-i18n="browser.title">需要 Chrome 或 Edge</strong>
+    <p data-i18n="browser.body">這個頁面透過 Web Serial 與相框通訊，只有桌面版的 Chrome、Edge 或其他 Chromium 瀏覽器支援；Firefox、Safari 與手機瀏覽器無法使用。</p>
+  </div>
+
+  <h2 data-i18n="version.title">版本</h2>
+  <div class="version-row">
+    <label for="version" data-i18n="version.label">韌體版本</label>
+    <select id="version"></select>
+    <span id="version-date" class="version-notes"></span>
+  </div>
+  <p id="version-notes" class="version-notes"></p>
+  <p class="version-notes" id="version-server"></p>
+
+  <h2 data-i18n="before.title">安裝前</h2>
+  <ol>
+    <li data-i18n="before.1">用<strong>可傳資料的</strong> USB 線把相框接到這台電腦。只能充電的線不行。</li>
+    <li data-i18n="before.2">喚醒相框。它睡著時 USB 埠不存在：短按按鈕可讓它醒約 40 秒；更穩的做法是在開機時長按按鈕約 3 秒進入設定畫面，相框會保持清醒 5 分鐘。</li>
+    <li data-i18n="before.3">按下面其中一個安裝按鈕，在瀏覽器跳出的清單中選擇「USB JTAG/serial debug unit」。</li>
+    <li data-i18n="before.4">等待完成。寫入約 10 到 30 秒，完成後相框自動重新開機。安裝對話框本身是英文的。</li>
+  </ol>
+
+  <h2 data-i18n="install.title">安裝</h2>
+  <div class="grid">
+    <div class="card">
+      <span class="tag" data-i18n="update.tag">既有相框</span>
+      <h3 data-i18n="update.title">升級韌體</h3>
+      <p class="fill" data-i18n="update.body">只寫入程式區，Wi-Fi 與伺服器設定會保留。按下後會先問「Erase device」，<strong>請不要勾選</strong>，直接按 Next。勾了設定就會被清掉。</p>
+      <esp-web-install-button id="btn-update">
+        <button type="button" class="btn" slot="activate" data-i18n="update.button">升級</button>
+        <span slot="unsupported" class="danger" data-i18n="unsupported">這個瀏覽器不支援 Web Serial，請改用 Chrome 或 Edge。</span>
+        <span slot="not-allowed" class="danger" data-i18n="notallowed">這個網址不是 HTTPS，瀏覽器不允許使用序列埠。</span>
+      </esp-web-install-button>
+    </div>
+    <div class="card">
+      <span class="tag" data-i18n="factory.tag">全新相框</span>
+      <h3 data-i18n="factory.title">完整安裝</h3>
+      <p class="fill" data-i18n="factory.body">寫入 bootloader、分割表與程式，並<strong>清除所有設定</strong>。第一次刷的板子用這個；已在使用的相框刷完要重新設定 Wi-Fi 與伺服器。</p>
+      <esp-web-install-button id="btn-factory">
+        <button type="button" class="btn secondary" slot="activate" data-i18n="factory.button">完整安裝</button>
+        <span slot="unsupported" class="danger" data-i18n="unsupported">這個瀏覽器不支援 Web Serial，請改用 Chrome 或 Edge。</span>
+        <span slot="not-allowed" class="danger" data-i18n="notallowed">這個網址不是 HTTPS，瀏覽器不允許使用序列埠。</span>
+      </esp-web-install-button>
+    </div>
+  </div>
+
+  <h2 data-i18n="after.title">安裝後</h2>
+  <div class="grid">
+    <div class="card">
+      <h3 data-i18n="after.update.title">升級後</h3>
+      <p data-i18n="after.update.body">相框會重新開機、連上原本的 Wi-Fi 並取一張新照片，約 40 秒後出現。不需要任何設定。</p>
+    </div>
+    <div class="card">
+      <h3 data-i18n="after.factory.title">完整安裝後</h3>
+      <ol>
+        <li data-i18n="after.factory.1">面板會顯示設定畫面，上面有網路名稱、網址與兩個 QR code。</li>
+        <li data-i18n="after.factory.2">用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路，或手動連線。</li>
+        <li data-i18n="after.factory.3">設定頁通常會自動開啟；沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。</li>
+        <li data-i18n="after.factory.4">填入家裡的 Wi-Fi、密碼與伺服器網址，例如 <code>http://192.168.1.10:15001</code>，儲存。</li>
+      </ol>
+    </div>
+  </div>
+
+  <h2 data-i18n="manual.title">不用瀏覽器</h2>
+  <p data-i18n="manual.body">同樣的檔案也可以用 esptool 或 PlatformIO 寫入。升級只寫 0x10000；完整安裝從 0x0 寫入。</p>
+  <pre><code id="esptool-cmd"></code></pre>
+  <p>
+    <a id="dl-app" href="#" data-i18n="manual.dl.app">下載 app.bin（升級用，0x10000）</a> ·
+    <a id="dl-factory" href="#" data-i18n="manual.dl.factory">下載 factory.bin（完整安裝用，0x0）</a> ·
+    <a id="dl-sums" href="#">SHA256SUMS</a>
+  </p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a href="https://github.com/jwchen119/EPF">GitHub</a>
+    <a id="readme-link" href="https://github.com/jwchen119/EPF/blob/main/README.zh-TW.md" data-i18n="footer.readme">說明文件</a>
+    <a href="https://hub.docker.com/r/jwchen119/epf" data-i18n="footer.docker">伺服器映像（Docker Hub）</a>
+    <span data-i18n="footer.license">MIT 授權</span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const STRINGS = {
+    'zh-TW': {
+      'title.sub': '電子紙相框 · 韌體安裝',
+      'lead': '直接從瀏覽器把韌體寫入相框的 ESP32-C6，不需要安裝任何軟體。',
+      'browser.title': '需要 Chrome 或 Edge',
+      'browser.body': '這個頁面透過 Web Serial 與相框通訊，只有桌面版的 Chrome、Edge 或其他 Chromium 瀏覽器支援；Firefox、Safari 與手機瀏覽器無法使用。',
+      'version.title': '版本',
+      'version.label': '韌體版本',
+      'version.server': '搭配的伺服器映像：',
+      'before.title': '安裝前',
+      'before.1': '用<strong>可傳資料的</strong> USB 線把相框接到這台電腦。只能充電的線不行。',
+      'before.2': '喚醒相框。它睡著時 USB 埠不存在：短按按鈕可讓它醒約 40 秒；更穩的做法是在開機時長按按鈕約 3 秒進入設定畫面，相框會保持清醒 5 分鐘。',
+      'before.3': '按下面其中一個安裝按鈕，在瀏覽器跳出的清單中選擇「USB JTAG/serial debug unit」。',
+      'before.4': '等待完成。寫入約 10 到 30 秒，完成後相框自動重新開機。安裝對話框本身是英文的。',
+      'install.title': '安裝',
+      'update.tag': '既有相框',
+      'update.title': '升級韌體',
+      'update.body': '只寫入程式區，Wi-Fi 與伺服器設定會保留。按下後會先問「Erase device」，<strong>請不要勾選</strong>，直接按 Next。勾了設定就會被清掉。',
+      'update.button': '升級',
+      'factory.tag': '全新相框',
+      'factory.title': '完整安裝',
+      'factory.body': '寫入 bootloader、分割表與程式，並<strong>清除所有設定</strong>。第一次刷的板子用這個；已在使用的相框刷完要重新設定 Wi-Fi 與伺服器。',
+      'factory.button': '完整安裝',
+      'unsupported': '這個瀏覽器不支援 Web Serial，請改用 Chrome 或 Edge。',
+      'notallowed': '這個網址不是 HTTPS，瀏覽器不允許使用序列埠。',
+      'after.title': '安裝後',
+      'after.update.title': '升級後',
+      'after.update.body': '相框會重新開機、連上原本的 Wi-Fi 並取一張新照片，約 40 秒後出現。不需要任何設定。',
+      'after.factory.title': '完整安裝後',
+      'after.factory.1': '面板會顯示設定畫面，上面有網路名稱、網址與兩個 QR code。',
+      'after.factory.2': '用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路，或手動連線。',
+      'after.factory.3': '設定頁通常會自動開啟；沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。',
+      'after.factory.4': '填入家裡的 Wi-Fi、密碼與伺服器網址，例如 <code>http://192.168.1.10:15001</code>，儲存。',
+      'manual.title': '不用瀏覽器',
+      'manual.body': '同樣的檔案也可以用 esptool 或 PlatformIO 寫入。升級只寫 0x10000；完整安裝從 0x0 寫入。',
+      'manual.dl.app': '下載 app.bin（升級用，0x10000）',
+      'manual.dl.factory': '下載 factory.bin（完整安裝用，0x0）',
+      'footer.readme': '說明文件',
+      'footer.docker': '伺服器映像（Docker Hub）',
+      'footer.license': 'MIT 授權',
+      'readme.url': 'https://github.com/jwchen119/EPF/blob/main/README.zh-TW.md',
+    },
+    'en': {
+      'title.sub': 'E-paper photo frame · firmware installer',
+      'lead': 'Write the firmware to the frame’s ESP32-C6 straight from your browser. Nothing to install.',
+      'browser.title': 'Chrome or Edge required',
+      'browser.body': 'This page talks to the frame over Web Serial, which only desktop Chrome, Edge and other Chromium browsers support. Firefox, Safari and phone browsers cannot be used.',
+      'version.title': 'Version',
+      'version.label': 'Firmware version',
+      'version.server': 'Matching server image:',
+      'before.title': 'Before you start',
+      'before.1': 'Connect the frame to this computer with a <strong>data-capable</strong> USB cable. Charge-only cables do not work.',
+      'before.2': 'Wake the frame. Its USB port does not exist while it sleeps: a short press keeps it awake for about 40 seconds; holding the button for about 3 seconds while it boots opens the setup screen and keeps it awake for 5 minutes, which is the easier option.',
+      'before.3': 'Click one of the install buttons below and pick “USB JTAG/serial debug unit” in the list the browser shows.',
+      'before.4': 'Wait for it to finish. Writing takes 10 to 30 seconds and the frame reboots by itself afterwards.',
+      'install.title': 'Install',
+      'update.tag': 'Existing frame',
+      'update.title': 'Update the firmware',
+      'update.body': 'Writes only the application, so the Wi-Fi and server settings are kept. You will be asked about “Erase device” first: <strong>leave it unticked</strong> and click Next. Ticking it wipes the settings.',
+      'update.button': 'Update',
+      'factory.tag': 'New frame',
+      'factory.title': 'Full install',
+      'factory.body': 'Writes the bootloader, partition table and application, and <strong>erases all settings</strong>. Use this for a board flashed for the first time; a frame already in use will need its Wi-Fi and server set up again.',
+      'factory.button': 'Full install',
+      'unsupported': 'This browser does not support Web Serial. Use Chrome or Edge.',
+      'notallowed': 'This page is not served over HTTPS, so the browser will not allow serial access.',
+      'after.title': 'Afterwards',
+      'after.update.title': 'After an update',
+      'after.update.body': 'The frame reboots, joins its Wi-Fi and fetches a new photo, which appears after about 40 seconds. Nothing to configure.',
+      'after.factory.title': 'After a full install',
+      'after.factory.1': 'The panel shows a setup screen with the network name, the address and two QR codes.',
+      'after.factory.2': 'Scan the first QR code with your phone to join the <code>ESP32_ePAPER</code> network, or pick it by hand.',
+      'after.factory.3': 'The setup page usually opens by itself. If not, scan the second code or browse to <code>http://4.3.2.1</code>.',
+      'after.factory.4': 'Enter your Wi-Fi, its password and the server URL, for example <code>http://192.168.1.10:15001</code>, and save.',
+      'manual.title': 'Without a browser',
+      'manual.body': 'The same files can be written with esptool or PlatformIO. An update writes 0x10000 only; a full install writes from 0x0.',
+      'manual.dl.app': 'Download app.bin (update, 0x10000)',
+      'manual.dl.factory': 'Download factory.bin (full install, 0x0)',
+      'footer.readme': 'Documentation',
+      'footer.docker': 'Server image (Docker Hub)',
+      'footer.license': 'MIT licence',
+      'readme.url': 'https://github.com/jwchen119/EPF/blob/main/README.md',
+    },
+  };
+
+  let lang = 'zh-TW';
+  let versions = null;
+
+  function pickInitialLang() {
+    const fromUrl = new URLSearchParams(location.search).get('lang');
+    if (fromUrl && STRINGS[fromUrl]) return fromUrl;
+    try {
+      const saved = localStorage.getItem('epf-installer-lang');
+      if (saved && STRINGS[saved]) return saved;
+    } catch (e) { /* storage may be unavailable */ }
+    return (navigator.language || '').toLowerCase().startsWith('zh') ? 'zh-TW' : 'en';
+  }
+
+  function applyLang(next) {
+    lang = next;
+    document.documentElement.lang = lang === 'zh-TW' ? 'zh-Hant' : 'en';
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const text = STRINGS[lang][el.dataset.i18n];
+      if (text !== undefined) el.innerHTML = text;
+    });
+    document.querySelectorAll('.lang button').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
+    });
+    document.getElementById('readme-link').href = STRINGS[lang]['readme.url'];
+    try { localStorage.setItem('epf-installer-lang', lang); } catch (e) { /* ignore */ }
+    renderVersion();
+  }
+
+  function selectedVersion() {
+    if (!versions) return null;
+    const id = document.getElementById('version').value || versions.latest;
+    return versions.versions.find(v => v.version === id) || null;
+  }
+
+  function renderVersion() {
+    const v = selectedVersion();
+    if (!v) return;
+    const dir = 'firmware/v' + v.version + '/';
+    document.getElementById('version-date').textContent = v.date || '';
+    document.getElementById('version-notes').textContent = (v.notes && (v.notes[lang] || v.notes.en)) || '';
+    document.getElementById('version-server').textContent =
+      v.server ? STRINGS[lang]['version.server'] + ' ' + v.server : '';
+    document.getElementById('btn-update').setAttribute('manifest', dir + 'update.json');
+    document.getElementById('btn-factory').setAttribute('manifest', dir + 'factory.json');
+    document.getElementById('dl-app').href = dir + 'app.bin';
+    document.getElementById('dl-factory').href = dir + 'factory.bin';
+    document.getElementById('dl-sums').href = dir + 'SHA256SUMS.txt';
+    document.getElementById('esptool-cmd').textContent =
+      '# update, settings kept\n' +
+      'esptool --chip esp32c6 --port COM5 write_flash 0x10000 app.bin\n' +
+      '# full install, everything erased\n' +
+      'esptool --chip esp32c6 --port COM5 write_flash 0x0 factory.bin';
+  }
+
+  function fillVersions(data) {
+    versions = data;
+    const select = document.getElementById('version');
+    select.innerHTML = '';
+    data.versions.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.version;
+      opt.textContent = 'v' + v.version + (v.version === data.latest ? '  ✓' : '');
+      select.appendChild(opt);
+    });
+    select.value = data.latest;
+    renderVersion();
+  }
+
+  document.querySelectorAll('.lang button').forEach(b => {
+    b.addEventListener('click', () => applyLang(b.dataset.lang));
+  });
+  document.getElementById('version').addEventListener('change', renderVersion);
+
+  // Web Serial is the one hard requirement
+  if ('serial' in navigator) {
+    document.getElementById('browser-warning').classList.add('hidden');
+  }
+
+  applyLang(pickInitialLang());
+  fetch('firmware/versions.json', { cache: 'no-cache' })
+    .then(r => r.json())
+    .then(fillVersions)
+    .catch(() => {
+      document.getElementById('version-notes').textContent =
+        lang === 'zh-TW' ? '無法載入版本清單。' : 'Could not load the version list.';
+    });
+})();
+</script>
+</body>
+</html>

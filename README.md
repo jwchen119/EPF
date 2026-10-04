@@ -1,5 +1,7 @@
 # EPF - E-paper Photo Frame
 
+[English](README.md) | [繁體中文](README.zh-TW.md)
+
 A battery-powered photo frame built around a Waveshare 7.3" Spectra 6 (E6) colour e-paper panel and an ESP32-C6. Photos are managed in an [Immich](https://immich.app) album; a small Flask server (normally run in Docker on a NAS) picks the next photo, crops, enhances and dithers it to the panel's six colours, and hands the ESP32 a stream of bytes it can push straight into the display. The ESP32 does no image processing, so it is awake for well under a minute per photo and spends the rest of its time in deep sleep.
 
 Two parts live in this repository and talk over HTTP:
@@ -123,7 +125,13 @@ The rest serve the settings page: `/setting` (GET renders, POST saves), `/status
 
 ## Firmware
 
-### Build with PlatformIO (recommended)
+### Install from your browser (easiest)
+
+The web installer at **https://jwchen119.github.io/EPF/** writes a released firmware to the frame from Chrome or Edge, with nothing to install. It offers two buttons per version: *Update* writes only the application and keeps the Wi-Fi and server settings (leave the "Erase device" box unticked when asked), and *Full install* writes everything and erases the settings, for a brand-new board. Wake the frame first, since its USB port only exists while it is awake: a short press keeps it awake for about 40 seconds, holding the button for 3 seconds at boot opens the setup screen and keeps it awake for 5 minutes.
+
+The page is the `docs/` folder of this repository, served by GitHub Pages. To publish a new release, build the firmware and run `python docs/firmware/add_version.py <version> --notes-en ... --notes-zh ...`, which copies the images into `docs/firmware/v<version>/`, writes the manifests and updates the version list.
+
+### Build with PlatformIO
 
 Open the `Arduino` folder in VS Code with the PlatformIO or pioarduino extension, or from a shell:
 

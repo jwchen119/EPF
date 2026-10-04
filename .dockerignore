@@ -19,6 +19,7 @@ docker-compose.yml
 __pycache__/
 *.py[cod]
 
-# Firmware and enclosure: built elsewhere, never read by the server
+# Firmware, enclosure and the web installer: never read by the server
 Arduino/
 CAD/
+docs/

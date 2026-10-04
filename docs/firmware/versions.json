@@ -1,0 +1,14 @@
+{
+  "latest": "1.1.1",
+  "versions": [
+    {
+      "version": "1.1.1",
+      "date": "2026-10-04",
+      "notes": {
+        "en": "Status screens on the panel (setup with QR codes, errors, low battery), quiet retries with back-off instead of restart loops, faster wake-ups, wake-up telemetry in the server log.",
+        "zh-TW": "面板狀態畫面（含 QR code 的設定畫面、錯誤、低電量）、失敗後退避重試取代重啟迴圈、更快的喚醒、伺服器記錄中的喚醒遙測。"
+      },
+      "server": "jwchen119/epf:1.1.1"
+    }
+  ]
+}

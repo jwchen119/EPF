@@ -1,0 +1,17 @@
+{
+  "name": "EPF photo frame firmware (new frame)",
+  "version": "1.1.1",
+  "new_install_prompt_erase": false,
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C6",
+      "parts": [
+        {
+          "path": "factory.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}
