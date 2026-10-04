@@ -79,13 +79,11 @@
   }
   .title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
   h1 { margin: 0; font-size: clamp(2rem, 6.5vw, 3.2rem); line-height: 1.05; letter-spacing: -0.03em; }
-  .version-button {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 9px 14px; border-radius: 999px; cursor: pointer; font: inherit; font-weight: 650;
-    background: var(--panel); color: var(--text); border: 1px solid var(--card-line);
+  .latest-badge {
+    padding: 6px 12px; border-radius: 999px; font-size: 0.85rem; font-weight: 650;
+    background: var(--panel); color: var(--accent); border: 1px solid var(--card-line); white-space: nowrap;
   }
-  .version-button:hover { border-color: var(--accent); }
-  .version-button .chev { color: var(--muted); font-size: 0.8em; }
+  .latest-badge:empty { display: none; }
   .lead { margin: 18px 0 0; color: var(--muted); font-size: 1.04rem; line-height: 1.7; }
   .steps {
     margin: 26px 0; padding: 20px 20px 20px 42px; border-radius: 16px;
@@ -93,8 +91,12 @@
   }
   .steps li { margin: 4px 0; }
   .steps li::marker { color: var(--accent); font-weight: 700; }
-  .choice { margin: 0 auto 10px; max-width: 420px; }
-  .choice label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 0.92rem; }
+  .choice { margin: 0 auto 10px; max-width: 420px; display: grid; gap: 14px; }
+  .choice label { display: block; color: var(--muted); font-size: 0.92rem; }
+  .field-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .field-head a { color: var(--accent); font-size: 0.88rem; text-decoration: none; }
+  .field-head a:hover { text-decoration: underline; }
+  .field label, .field-head { margin-bottom: 8px; }
   select {
     width: 100%; padding: 11px 36px 11px 13px; border-radius: 10px; font: inherit; color: var(--text);
     background: #141c27; border: 1px solid rgba(45, 212, 160, 0.4);
@@ -171,9 +173,7 @@
   <p class="eyebrow" data-i18n="eyebrow">EPF 電子紙相框</p>
   <div class="title-row">
     <h1 data-i18n="title">韌體安裝</h1>
-    <button type="button" class="version-button" id="version-button" aria-haspopup="dialog">
-      <span id="version-label">v—</span><span class="chev">▾</span>
-    </button>
+    <span class="latest-badge" id="latest-badge"></span>
   </div>
   <p class="lead" data-i18n="lead">直接從桌面版瀏覽器把韌體寫入相框，不需要安裝任何工具。</p>
 
@@ -184,11 +184,20 @@
   </ol>
 
   <div class="choice">
-    <label for="install-type" data-i18n="type.label">安裝類型</label>
-    <select id="install-type">
-      <option value="update" data-i18n="type.update">升級（保留 Wi-Fi 與伺服器設定）</option>
-      <option value="factory" data-i18n="type.factory">完整安裝（全新相框，清除所有設定）</option>
-    </select>
+    <div class="field">
+      <div class="field-head">
+        <label for="version-select" data-i18n="version.label">韌體版本</label>
+        <a href="#" id="changelog-link" data-i18n="version.changelog">更新內容</a>
+      </div>
+      <select id="version-select"></select>
+    </div>
+    <div class="field">
+      <label for="install-type" data-i18n="type.label">安裝類型</label>
+      <select id="install-type">
+        <option value="update" data-i18n="type.update">升級（保留 Wi-Fi 與伺服器設定）</option>
+        <option value="factory" data-i18n="type.factory">完整安裝（全新相框，清除所有設定）</option>
+      </select>
+    </div>
     <p class="choice-help" id="type-help"></p>
   </div>
   <div class="hint" id="update-hint">
@@ -235,7 +244,7 @@
 <dialog class="version-dialog" id="version-dialog">
   <div class="dialog-body">
     <div class="dialog-header">
-      <h2 data-i18n="dialog.title">選擇韌體版本</h2>
+      <h2 data-i18n="dialog.title">版本與更新內容</h2>
       <button type="button" class="dialog-close" id="dialog-close" aria-label="Close">×</button>
     </div>
     <div class="version-list" id="version-list" role="radiogroup"></div>
@@ -273,8 +282,12 @@
       'after.factory.2': '用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路，或手動連線。',
       'after.factory.3': '設定頁通常會自動開啟；沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。',
       'after.factory.4': '填入家裡的 Wi-Fi、密碼與伺服器網址，例如 <code>http://192.168.1.10:15001</code>，儲存即可。',
-      'dialog.title': '選擇韌體版本',
-      'dialog.confirm': '使用這個版本',
+      'version.label': '韌體版本',
+      'version.changelog': '更新內容',
+      'version.latest': '最新',
+      'badge.latest': '最新版 {v}',
+      'dialog.title': '版本與更新內容',
+      'dialog.confirm': '使用選取的版本',
       'dialog.latest': '最新',
       'dialog.server': '搭配伺服器映像',
       'footer.readme': '說明文件',
@@ -310,8 +323,12 @@
       'after.factory.2': 'Scan the first QR code with your phone to join the <code>ESP32_ePAPER</code> network, or pick it by hand.',
       'after.factory.3': 'The setup page usually opens by itself. If not, scan the second code or browse to <code>http://4.3.2.1</code>.',
       'after.factory.4': 'Enter your Wi-Fi, its password and the server URL, for example <code>http://192.168.1.10:15001</code>, and save.',
-      'dialog.title': 'Select firmware version',
-      'dialog.confirm': 'Use this version',
+      'version.label': 'Firmware version',
+      'version.changelog': 'What’s new',
+      'version.latest': 'latest',
+      'badge.latest': 'Latest {v}',
+      'dialog.title': 'Versions and changes',
+      'dialog.confirm': 'Use the selected version',
       'dialog.latest': 'latest',
       'dialog.server': 'Matching server image',
       'footer.readme': 'Documentation',
@@ -358,10 +375,25 @@
   function currentType() { return $('install-type').value; }
 
   // Everything that depends on the chosen version or install type
+  function renderVersionSelect() {
+    const select = $('version-select');
+    select.innerHTML = '';
+    if (!versions) return;
+    versions.versions.forEach(entry => {
+      const opt = document.createElement('option');
+      opt.value = entry.version;
+      opt.textContent = 'v' + entry.version + (entry.date ? '  —  ' + entry.date : '')
+        + (entry.version === versions.latest ? '  (' + t('version.latest') + ')' : '');
+      select.appendChild(opt);
+    });
+    select.value = selected || versions.latest;
+    $('latest-badge').textContent = versions.latest ? t('badge.latest').replace('{v}', 'v' + versions.latest) : '';
+  }
+
   function render() {
     const type = currentType();
     const v = selected ? 'v' + selected : 'v—';
-    $('version-label').textContent = v;
+    renderVersionSelect();
     $('type-help').textContent = t(type === 'update' ? 'help.update' : 'help.factory');
     $('update-hint').classList.toggle('hidden', type !== 'update');
     $('factory-warning').classList.toggle('hidden', type !== 'factory');
@@ -404,7 +436,8 @@
     $('version-dialog').showModal();
   }
 
-  $('version-button').addEventListener('click', openDialog);
+  $('changelog-link').addEventListener('click', e => { e.preventDefault(); openDialog(); });
+  $('version-select').addEventListener('change', () => { selected = $('version-select').value; render(); });
   $('dialog-close').addEventListener('click', () => $('version-dialog').close());
   $('dialog-confirm').addEventListener('click', () => {
     if (dialogChoice) selected = dialogChoice;
