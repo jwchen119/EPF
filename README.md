@@ -167,7 +167,7 @@ The NFC library is required to compile even if no tag is fitted; at runtime the 
 
 1. Power the frame and hold the button for about 3 seconds while it boots. The serial monitor prints `long press`, the panel shows a setup screen with the network name, the address and two QR codes, and the ESP32 starts an access point named `ESP32_ePAPER`. A frame with no saved network shows the same screen on its own.
 2. Connect to it (scan the first QR code, or pick the network by hand); the setup page opens automatically. If it does not, scan the second code or browse to `http://4.3.2.1`. The access point closes after 5 minutes.
-3. Pick your WiFi network, enter its password, and enter the server URL, for example `http://192.168.1.10:15001`. Up to five networks are remembered and tried in turn.
+3. Pick your WiFi network and enter its password. The server URL can be left empty: the frame then finds a server announcing itself on the network (see the Docker section above). Enter it by hand, for example `http://192.168.1.10:15001`, when the server runs on Docker Desktop or the frame cannot find it; an empty field later keeps the saved URL. Up to five networks are remembered and tried in turn.
 4. Save. The frame connects, fetches the first photo and goes to sleep.
 
 To change the settings later, hold the button during a reboot the same way. Saved networks are listed on the page and can be selected without retyping their password.
@@ -177,6 +177,7 @@ To change the settings later, hold the button during a reboot the same way. Save
 - Wakes on the schedule the server returns, or immediately on a short button press.
 - Below 3.05 V the frame clears the screen and sleeps for 24 hours to protect the battery.
 - A server error (HTTP 500) is retried up to five times, ten seconds apart within the same wake-up. If the photo arrives but no schedule does, the frame sleeps for an hour.
+- When the saved server cannot be reached at all, for instance because it got a new address after a router restart, the frame looks for a server on the network (about three seconds) and switches to it once it has delivered a photo.
 - When a wake-up ends without a new photo (no Wi-Fi, server unreachable, download rejected), the frame keeps the current photo and quietly tries again after 15, 30 and then 60 minutes. If the fourth attempt also fails it draws an error screen explaining what went wrong, with the server address, network, battery level and when it will try next, and from then on checks every 6 hours to spare the battery. A button press always retries at once, restarts the schedule from 15 minutes, and shows the error screen if that attempt fails too. The first successful photo clears the count.
 - Right after first setup the server answers with an error until an album is configured on the settings page. Once it is, either wait for the next retry or press the button to fetch the first photo immediately.
 - When the battery is empty the panel shows a charging reminder instead of going blank.

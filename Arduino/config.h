@@ -52,6 +52,14 @@
 #define BUFFER_SIZE 131072U // Buffer size for image processing
 
 #define SERVER_BASE_URL "http://server.ip:15001"
+
+// Server discovery (fetchPhoto() in epd7in3e.ino): the mDNS service a server
+// announces, the protocol version this firmware speaks (its TXT "api", see
+// epf/discovery.py), and the name the frame uses on the network while looking
+#define DISCOVERY_SERVICE "epf"
+#define DISCOVERY_PROTO "tcp"
+#define SERVER_API_VERSION "1"
+#define DISCOVERY_HOSTNAME "epf-frame"
 #define PREFERENCES_SLEEP_TIME_KEY "refresh_rate"
 // #define PREFERENCES_DEVICE_REGISTRED_KEY "plugin"
 // #define PREFERENCES_FILENAME_KEY "filename"

@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
+#include <ESPmDNS.h>
 #include "epd7in3e.h"
 #include "FS.h"
 #include <ArduinoJson.h>
@@ -51,12 +52,16 @@ private:
   StatusScreen screen{epd};
   String imageUrl = "";
   String failReason = ""; // why this wake-up produced no photo, for the error screen
+  bool serverUnreachable = false; // the last download got no HTTP answer at all
   int batteryMv = 0;      // measured once per wake-up in checkVoltage()
 
-  bool downloadImage()
+  // Fetch the photo from the server at url and show it. On success it
+  // hibernates on the server's schedule and never returns; on failure it sets
+  // failReason, and serverUnreachable when no HTTP answer came back at all.
+  bool downloadImage(const String &url)
   {
-    // preferences.begin("data, true");
-    imageUrl = preferences.getString("SERVER_BASE_URL");
+    imageUrl = url;
+    serverUnreachable = false;
     Serial.print("nas url: ");
     Serial.println(imageUrl);
     bool isHttps = imageUrl.startsWith("https://");
@@ -85,6 +90,7 @@ private:
       {
         Serial.println("Failed to initialize HTTPS connection");
         failReason = "Could not start the HTTPS client";
+        serverUnreachable = true;
         delete secureClient;
         return false;
       }
@@ -96,6 +102,7 @@ private:
       {
         Serial.println("Failed to initialize HTTP connection");
         failReason = "Could not start the HTTP client";
+        serverUnreachable = true;
         delete basicClient;
         return false;
       }
@@ -217,7 +224,10 @@ private:
       else if (httpCode > 0)
         failReason = "Server returned HTTP " + String(httpCode);
       else
+      {
         failReason = "Could not reach the server: " + http.errorToString(httpCode);
+        serverUnreachable = true;
+      }
     }
 
     http.end();
@@ -233,6 +243,9 @@ private:
       // the server's schedule; if /sleep did not answer, fall back to the
       // default interval rather than losing a day.
       preferences.putUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, 0);
+      // A server found on the network is kept once it has delivered a photo
+      if (preferences.getString("SERVER_BASE_URL") != url)
+        preferences.putString("SERVER_BASE_URL", url);
       hibernate(sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL);
     }
 
@@ -507,6 +520,65 @@ public:
     return false;
   }
 
+  // Looks for a server announcing itself on the local network (mDNS service
+  // _epf._tcp, see epf/discovery.py on the server). Blocks for about three
+  // seconds; returns the first compatible server's base URL, or "" if none
+  // answered.
+  String discoverServer()
+  {
+    if (!MDNS.begin(DISCOVERY_HOSTNAME))
+    {
+      Serial.println(F("mDNS could not start"));
+      return "";
+    }
+    String found = "";
+    int count = MDNS.queryService(DISCOVERY_SERVICE, DISCOVERY_PROTO);
+    Serial.printf("Servers found on the network: %d\n", count);
+    for (int i = 0; i < count && found.isEmpty(); i++)
+    {
+      // A server speaking a newer, incompatible protocol says so in "api"
+      if (MDNS.hasTxt(i, "api") && MDNS.txt(i, "api") != SERVER_API_VERSION)
+        continue;
+      IPAddress address = MDNS.address(i);
+      if (address == IPAddress())
+        continue;
+      String path = MDNS.hasTxt(i, "path") ? MDNS.txt(i, "path") : String("/");
+      if (path.endsWith("/"))
+        path.remove(path.length() - 1);
+      found = "http://" + address.toString() + ":" + String(MDNS.port(i)) + path;
+    }
+    MDNS.end();
+    return found;
+  }
+
+  // The saved server first. If there is none, or it could not be reached at
+  // all (a new address after a router restart, say), look for one on the
+  // network and try that. A server that answered with an error is not
+  // replaced: finding it again would not help. Returns only on failure.
+  void fetchPhoto()
+  {
+    String saved = preferences.getString("SERVER_BASE_URL");
+    if (saved.length())
+    {
+      downloadImage(saved);
+      if (!serverUnreachable)
+        return;
+    }
+
+    String found = discoverServer();
+    if (found.isEmpty() || found == saved)
+    {
+      if (saved.isEmpty())
+        failReason = "No server address is set, and no server was found on this network";
+      else if (found.isEmpty())
+        failReason += ", and no server was found on this network";
+      return;
+    }
+    Serial.print(F("Trying the server found on the network: "));
+    Serial.println(found);
+    downloadImage(found);
+  }
+
   void update()
   {
     Serial.println(F("Update method called"));
@@ -519,7 +591,7 @@ public:
     {
       Serial.println(F("WiFi Connected. Downloading image"));
       // Returns only on failure; on success it hibernates on the server's schedule
-      downloadImage();
+      fetchPhoto();
     }
 
     Serial.print(F("No new photo this wake-up: "));

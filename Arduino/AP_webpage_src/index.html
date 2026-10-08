@@ -584,8 +584,10 @@
       <i id="toggler" class="bi bi-eye" onclick="togglePassword()"></i>
     </div>
     <div class="form-group" id="custom_server_form_group">
-      <label for="server">API Server</label>
-      <input type="url" id="server" name="server" placeholder="Enter server ip (e.g. http://192.168.1.8:15001)">
+      <label for="server">API Server (optional)</label>
+      <input type="url" id="server" name="server" placeholder="Leave empty to find it automatically">
+      <small>Empty keeps the saved server, or lets the frame find one on this network.
+        Enter it if it is not found, e.g. http://192.168.1.8:15001</small>
     </div>
     <div class="form-group">
       <div class="alert alert-primary" id="message" role="alert" style="display: none;"></div>

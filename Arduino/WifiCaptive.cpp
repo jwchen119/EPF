@@ -379,11 +379,16 @@ void WifiCaptive::saveWifiCredentials(String ssid, String pass, String url)
     // Log.info("Saving wifi credentials: %s\r\n", ssid.c_str());
     Serial.println(url);
 
-    // Always update API server URL (even if WiFi credentials are unchanged)
-    Preferences dataPrefs;
-    dataPrefs.begin("data", false);
-    dataPrefs.putString("SERVER_BASE_URL", url);
-    dataPrefs.end();
+    // Update the API server URL even if the WiFi credentials are unchanged. An
+    // empty field keeps the saved one; with none saved, the frame looks for the
+    // server on the network (fetchPhoto() in epd7in3e.ino)
+    if (url.length())
+    {
+        Preferences dataPrefs;
+        dataPrefs.begin("data", false);
+        dataPrefs.putString("SERVER_BASE_URL", url);
+        dataPrefs.end();
+    }
 
     // Check if the credentials already exist
     for (u16_t i = 0; i < WIFI_MAX_SAVED_CREDS; i++)
