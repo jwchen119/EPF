@@ -15,8 +15,8 @@ from datetime import datetime, timedelta
 import ntplib
 from flask import (Flask, jsonify, redirect, render_template, request, send_file,
                    url_for)
-from epf import (battery, config, credentials, eventlog, imaging, immich, notify,
-                 state, tracking)
+from epf import (battery, config, credentials, discovery, eventlog, imaging, immich,
+                 notify, state, tracking)
 
 app = Flask(__name__)
 
@@ -682,7 +682,12 @@ def main():
 
         threading.Thread(target=run_daily_ntp_sync, daemon=True).start()
 
-        app.run(host='0.0.0.0', port=5000, use_reloader=False)
+        # 5000 inside a container whose port Docker maps; with network_mode:
+        # host there is no mapping, so docker-compose.yml passes the port the
+        # frame and the browser use
+        port = int(os.getenv('EPF_PORT', '5000'))
+        discovery.start(port)
+        app.run(host='0.0.0.0', port=port, use_reloader=False)
     except KeyboardInterrupt:
         observer.stop()
     observer.join()

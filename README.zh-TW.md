@@ -73,6 +73,8 @@ docker compose up -d
 
 設定頁在 `http://<主機>:15001/`。compose 檔把 `./config` 與 `./photos` 掛載進容器，所以設定、已顯示照片的紀錄、事件記錄與通知憑證都能在 `docker compose pull` 與重建容器後保留。它也設定了 `TZ`，這很重要：安靜時段與喚醒排程都以本地時間計算。
 
+容器使用主機的網路（`network_mode: host`），讓伺服器能以 mDNS 在區網上宣告自己（服務類型 `_epf._tcp`），也就是 ESPHome 裝置讓 Home Assistant 找到的同一種機制。支援這項功能的相框韌體不必輸入位址就能找到伺服器；韌體較舊，或宣告到不了相框時（訪客網路、AP 隔離、不同子網路），照舊在設定入口輸入伺服器網址即可。主機網路模式只支援 Linux。在 Windows 或 macOS 的 Docker Desktop 上，請把 `network_mode: host` 與環境變數 `EPF_PORT` 換成 `ports: ["15001:5000"]`，並手動輸入網址。
+
 其餘全部在設定頁操作，沒有需要手動編輯的設定檔。
 
 ### 環境變數
@@ -80,7 +82,9 @@ docker compose up -d
 | 變數 | 預設 | 用途 |
 | --- | --- | --- |
 | `IMMICH_API_KEY` | 必填 | Immich 網頁介面 → 帳號設定 → API 金鑰。啟動時讀取一次。 |
-| `EPF_PORT` | `15001` | 設定頁與相框使用的主機埠。必須與相框設定入口中儲存的伺服器網址一致。 |
+| `EPF_PORT` | 使用 Compose 時 `15001`，否則 `5000` | 伺服器監聽的埠：設定頁使用，也是相框伺服器網址中的埠。 |
+| `EPF_DISCOVERY` | `on` | 設為 `off` 時伺服器不在區網上宣告自己。 |
+| `EPF_ADVERTISE_ADDRESS` | 預設路由所用的位址 | 改為宣告這個位址，適用於有多個網路的主機。 |
 | `TZ` | `Asia/Taipei` | 本地時區。沒有設定時容器以 UTC 運行，安靜時段會偏移一個時差。 |
 | `IMMICH_PHOTO_DEST` | `/photos` | 存放 `tracking.txt` 與 `events.jsonl` 的位置。不會有照片寫入磁碟。 |
 
@@ -88,12 +92,16 @@ docker compose up -d
 
 ```bash
 docker run --name epf \
+    --network host \
+    -e EPF_PORT=15001 \
     -e IMMICH_API_KEY='<你的 Immich API 金鑰>' \
     -e TZ=Asia/Taipei \
     -v "$(pwd)/config:/config" \
     -v "$(pwd)/photos:/photos" \
-    -d -p 15001:5000 jwchen119/epf
+    -d jwchen119/epf
 ```
+
+在 Docker Desktop 上請改用 `-p 15001:5000`，取代 `--network host -e EPF_PORT=15001`；相框則需要手動輸入伺服器網址。
 
 預建映像在 [Docker Hub](https://hub.docker.com/r/jwchen119/epf)。要自行建置，在倉庫根目錄執行 `docker build -t jwchen119/epf .`，或把 `docker-compose.yml` 裡的 `build: .` 取消註解。
 

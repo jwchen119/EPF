@@ -14,12 +14,13 @@ There are no tests, no linter config, and no build system for the Python side.
 
 ## Server: build and run
 
-`docker compose up -d`, with a `.env` alongside holding `IMMICH_API_KEY`. Or directly: `python app.py` (serves on `0.0.0.0:5000`).
+`docker compose up -d`, with a `.env` alongside holding `IMMICH_API_KEY`. Or directly: `python app.py` (serves on `0.0.0.0:$EPF_PORT`, default 5000).
 
-`docker-compose.yml` exists because two things are easy to get wrong and both fail silently:
+`docker-compose.yml` exists because three things are easy to get wrong and all fail silently:
 
 - Two paths are **hardcoded**, not configurable: `/config/config.yaml` (written by the settings page, watched by `watchdog` for external edits, created from `DEFAULT_CONFIG` if missing) and `/photos` (override with `IMMICH_PHOTO_DEST`; holds only `tracking.txt` — no photos are ever written to disk). A plain `docker restart` keeps them, but recreating the container — which is what updating the image requires — discards anything not bind-mounted, so settings revert to `DEFAULT_CONFIG` without any error.
 - **`TZ` must be set.** The base image has no timezone, so `datetime.now()` returns UTC. `/sleep` derives both the sleep window and the wake-up schedule from local time, so an unset `TZ` shifts the frame's quiet hours by the whole UTC offset. Zone data is already in the image, so the env var alone is enough — no `tzdata` install and no `/etc/localtime` mount.
+- **Host networking.** The server announces itself over mDNS (`_epf._tcp`, `epf/discovery.py`) so frames can find it without a typed address, and multicast does not leave a container on Docker's bridge network, so the compose file uses `network_mode: host` (Linux only). With no port mapping the app listens on `EPF_PORT` itself (15001 in the compose file, 5000 when unset), and the healthcheck reads the same variable. Without host networking the server still works; the announcement just never reaches the LAN, and the log says so.
 
 `IMMICH_API_KEY` is read once at import into the module-level `headers` dict. Note the README's `docker run` example writes `IMMICH-API-KEY` with hyphens, which the app does not read.
 
@@ -36,6 +37,7 @@ There are no tests, no linter config, and no build system for the Python side.
 | `immich.py` | album/asset queries, `select_asset()`, health check, thumbnail fetch; the `/download` path (`resolve_album_id`, `list_album_assets`, `fetch_original`) goes through `_call()`, which applies `CONNECT_TIMEOUT`/`READ_TIMEOUT` and turns transport failures into `ImmichError` 502/504 — the timeouts must stay under the firmware's 50s `HTTP_TIMEOUT` |
 | `imaging.py` | the pipeline; takes its settings as arguments and reads no globals |
 | `battery.py` | voltage → percentage |
+| `discovery.py` | the mDNS announcement frames use to find the server (python-zeroconf, on a thread at start-up; `EPF_DISCOVERY=off` disables it, `EPF_ADVERTISE_ADDRESS` overrides the address); never raises |
 | `notify.py` | low-battery push over Telegram or LINE |
 | `credentials.py` | the notification tokens, in `/config/credentials.json` |
 

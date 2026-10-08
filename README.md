@@ -73,6 +73,8 @@ docker compose up -d
 
 The settings page is then at `http://<host>:15001/`. The compose file bind-mounts `./config` and `./photos` so the settings, the shown-photo history, the event log and the notification credentials survive `docker compose pull` and a container rebuild. It also sets `TZ`, which matters: quiet hours and the wake-up schedule are evaluated in local time.
 
+The container runs on the host's network (`network_mode: host`) so that the server can announce itself on the LAN over mDNS, as `_epf._tcp`: the mechanism ESPHome devices use to be found by Home Assistant. Frame firmware that supports it finds the server without its address being typed in; with older firmware, or when the announcement cannot reach the frame (a guest network, client isolation, another subnet), enter the server URL in the captive portal as before. Host networking is Linux only. On Docker Desktop for Windows or macOS, replace `network_mode: host` and the `EPF_PORT` environment entry with `ports: ["15001:5000"]` and enter the URL by hand.
+
 Everything else is configured from the settings page; there is no config file to edit by hand.
 
 ### Environment variables
@@ -80,7 +82,9 @@ Everything else is configured from the settings page; there is no config file to
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `IMMICH_API_KEY` | required | Immich web UI, Account Settings, API Keys. Read once at start-up. |
-| `EPF_PORT` | `15001` | Host port for the settings page and for the frame. Must match the server URL saved in the frame's captive portal. |
+| `EPF_PORT` | `15001` with Compose, otherwise `5000` | Port the server listens on: the settings page, and the port in the frame's server URL. |
+| `EPF_DISCOVERY` | `on` | `off` stops the server announcing itself on the LAN. |
+| `EPF_ADVERTISE_ADDRESS` | the address of the default route | Address to announce instead, on a host with several networks. |
 | `TZ` | `Asia/Taipei` | Local timezone. Without it the container runs in UTC and the quiet hours shift by the UTC offset. |
 | `IMMICH_PHOTO_DEST` | `/photos` | Where `tracking.txt` and `events.jsonl` are kept. No photos are written to disk. |
 
@@ -88,12 +92,16 @@ Everything else is configured from the settings page; there is no config file to
 
 ```bash
 docker run --name epf \
+    --network host \
+    -e EPF_PORT=15001 \
     -e IMMICH_API_KEY='<your-immich-api-key>' \
     -e TZ=Asia/Taipei \
     -v "$(pwd)/config:/config" \
     -v "$(pwd)/photos:/photos" \
-    -d -p 15001:5000 jwchen119/epf
+    -d jwchen119/epf
 ```
+
+On Docker Desktop, use `-p 15001:5000` instead of `--network host -e EPF_PORT=15001`; the frame then needs the server URL entered by hand.
 
 The prebuilt image is on [Docker Hub](https://hub.docker.com/r/jwchen119/epf). To build it yourself, run `docker build -t jwchen119/epf .` in the repository root, or uncomment `build: .` in `docker-compose.yml`.
 

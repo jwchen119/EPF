@@ -14,8 +14,14 @@ services:
     # `image:` above and uncomment this:
     # build: .
     restart: unless-stopped
-    ports:
-      - "${EPF_PORT:-15001}:5000"
+    # The host's network rather than Docker's bridge, so the server's mDNS
+    # announcement (epf/discovery.py) reaches the LAN and a frame can find the
+    # server without its address being typed in. Linux only: on Docker Desktop
+    # for Windows or macOS, delete this line and the EPF_PORT entry below, add
+    #   ports:
+    #     - "${EPF_PORT:-15001}:5000"
+    # and enter the server URL in the frame's captive portal.
+    network_mode: host
     environment:
       # Required. Compose refuses to start if this is unset, which is better than
       # booting with no key and having every Immich request come back 401.
@@ -24,6 +30,9 @@ services:
       # the base image has no timezone set, so without this they are evaluated in
       # UTC and land at the wrong hours. Zone data is already in the image.
       TZ: ${TZ:-Asia/Taipei}
+      # With host networking there is no port mapping: the server listens on
+      # this port itself. It is the port in the frame's server URL too.
+      EPF_PORT: ${EPF_PORT:-15001}
     volumes:
       - ./config:/config
       - ./photos:/photos
@@ -31,7 +40,7 @@ services:
       # The base image ships neither curl nor wget, so probe with python itself.
       # /sleep only reads the config, so this never reaches out to Immich.
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:5000/sleep', timeout=5)"]
+             "import os, urllib.request; urllib.request.urlopen('http://localhost:%s/sleep' % os.environ.get('EPF_PORT', '5000'), timeout=5)"]
       interval: 60s
       timeout: 10s
       retries: 3
