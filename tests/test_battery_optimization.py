@@ -52,6 +52,7 @@ def local_client(tmp_path, monkeypatch):
     img.save(str(img_path), 'JPEG')
 
     monkeypatch.setattr(app_module, 'localdir', str(tmp_path))
+    monkeypatch.setattr(app_module, 'local_tracking_file', str(tmp_path / 'local_tracking.txt'))
     monkeypatch.setattr(app_module, 'APP_PASSWORD', '')  # disable auth
     app_module.app.config['TESTING'] = True
     with app_module.app.test_client() as c:

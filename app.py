@@ -31,6 +31,8 @@ import time
 
 import ntplib
 
+from local_rotation import load_shown, pick_next, save_shown
+
 load_dotenv()  # Load environment variables from .env file
 
 app = Flask(__name__)
@@ -427,6 +429,7 @@ apikey = os.getenv('IMMICH_API_KEY')
 base_dir = os.path.dirname(os.path.abspath(__file__))
 photodir = os.getenv('IMMICH_PHOTO_DEST', os.path.join(base_dir, 'photos'))
 tracking_file = os.path.join(photodir, 'tracking.txt')
+local_tracking_file = os.path.join(photodir, 'local_tracking.txt')
 localdir = os.getenv('LOCAL_PHOTO_DIR', os.path.join(base_dir, 'local_photos'))
 config_file = os.getenv('CONFIG_FILE', os.path.join(base_dir, 'config.yaml'))
 APP_PASSWORD = os.getenv('APP_PASSWORD', '')
@@ -1222,7 +1225,7 @@ def open_image_from_path(filepath):
 
 
 def serve_local_image():
-    """Pick a random image from localdir, process it, and return a send_file response."""
+    """Pick a not-yet-shown image from localdir, process it, and return a send_file response."""
     if not os.path.isdir(localdir):
         return jsonify({'error': f'Local photo directory not found: {localdir}'}), 500
 
@@ -1230,7 +1233,8 @@ def serve_local_image():
     if not candidates:
         return jsonify({'error': 'No supported images found in local directory'}), 404
 
-    filename = random.choice(candidates)
+    filename, shown = pick_next(candidates, load_shown(local_tracking_file))
+    save_shown(local_tracking_file, shown)
     filepath = os.path.join(localdir, filename)
     image = open_image_from_path(filepath)
 
