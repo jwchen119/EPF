@@ -82,10 +82,10 @@ Everything else is configured from the settings page; there is no config file to
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `IMMICH_API_KEY` | required | Immich web UI, Account Settings, API Keys. Read once at start-up. |
-| `EPF_PORT` | `15001` with Compose, otherwise `5000` | Port the server listens on: the settings page, and the port in the frame's server URL. |
+| `EPF_PORT` | `15001` with Compose, otherwise `auto` | Port the server listens on: the settings page, and the port in the frame's server URL. `auto` takes 5000, or the first free port from 15001 when 5000 is taken, as by the DSM web interface on a Synology with host networking; the log names the port. |
 | `EPF_DISCOVERY` | `on` | `off` stops the server announcing itself on the LAN. |
 | `EPF_ADVERTISE_ADDRESS` | the address of the default route | Address to announce instead, on a host with several networks. |
-| `TZ` | `Asia/Taipei` | Local timezone. Without it the container runs in UTC and the quiet hours shift by the UTC offset. |
+| `TZ` | `Asia/Taipei` with Compose, otherwise `Etc/UTC` | Local timezone. Left at UTC, the quiet hours shift by the UTC offset. |
 | `IMMICH_PHOTO_DEST` | `/photos` | Where `tracking.txt` and `events.jsonl` are kept. No photos are written to disk. |
 
 ### Run without Compose

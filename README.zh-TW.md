@@ -82,10 +82,10 @@ docker compose up -d
 | 變數 | 預設 | 用途 |
 | --- | --- | --- |
 | `IMMICH_API_KEY` | 必填 | Immich 網頁介面 → 帳號設定 → API 金鑰。啟動時讀取一次。 |
-| `EPF_PORT` | 使用 Compose 時 `15001`，否則 `5000` | 伺服器監聽的埠：設定頁使用，也是相框伺服器網址中的埠。 |
+| `EPF_PORT` | 使用 Compose 時 `15001`，否則 `auto` | 伺服器監聽的埠：設定頁使用，也是相框伺服器網址中的埠。`auto` 會使用 5000；5000 已被占用時（例如 Synology 以主機網路執行時 DSM 網頁介面占用了它），改用 15001 起第一個空閒的埠，日誌會寫出實際使用的埠。 |
 | `EPF_DISCOVERY` | `on` | 設為 `off` 時伺服器不在區網上宣告自己。 |
 | `EPF_ADVERTISE_ADDRESS` | 預設路由所用的位址 | 改為宣告這個位址，適用於有多個網路的主機。 |
-| `TZ` | `Asia/Taipei` | 本地時區。沒有設定時容器以 UTC 運行，安靜時段會偏移一個時差。 |
+| `TZ` | 使用 Compose 時 `Asia/Taipei`，否則 `Etc/UTC` | 本地時區。維持 UTC 時，安靜時段會偏移一個時差。 |
 | `IMMICH_PHOTO_DEST` | `/photos` | 存放 `tracking.txt` 與 `events.jsonl` 的位置。不會有照片寫入磁碟。 |
 
 ### 不用 Compose 執行

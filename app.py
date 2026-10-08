@@ -8,6 +8,7 @@ page. Run with `python app.py`, or `docker compose up -d`.
 """
 import io
 import os
+import socket
 import threading
 import time
 from datetime import datetime, timedelta
@@ -672,6 +673,35 @@ def run_daily_ntp_sync():
             print(f"Error in daily NTP sync: {error}")
             time.sleep(3600)
 
+def _port_free(port):
+    """ Whether nothing listens on port yet; SO_REUSEADDR as the server itself uses, so a closing connection does not count """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(('0.0.0.0', port))
+            return True
+        except OSError:
+            return False
+
+def listening_port():
+    """
+    EPF_PORT, or with "auto" (the image's default) 5000: the port Docker maps on
+    a bridge network. With host networking something may already listen there
+    (a Synology's DSM does), and then the first free port from 15001 is taken.
+    The frame finds the server either way (epf/discovery.py); the log says
+    where the settings page is.
+    """
+    setting = os.getenv('EPF_PORT', 'auto').strip().lower()
+    if setting not in ('', 'auto'):
+        return int(setting)
+    for port in [5000] + list(range(15001, 15021)):
+        if _port_free(port):
+            if port != 5000:
+                print(f"Port 5000 is in use, so the server listens on {port}: the settings page is "
+                      f"http://<this host>:{port}/. Set EPF_PORT to choose the port.", flush=True)
+            return port
+    return 5000
+
 def main():
     observer = config.start_watcher(config.apply)
 
@@ -682,10 +712,7 @@ def main():
 
         threading.Thread(target=run_daily_ntp_sync, daemon=True).start()
 
-        # 5000 inside a container whose port Docker maps; with network_mode:
-        # host there is no mapping, so docker-compose.yml passes the port the
-        # frame and the browser use
-        port = int(os.getenv('EPF_PORT', '5000'))
+        port = listening_port()
         discovery.start(port)
         app.run(host='0.0.0.0', port=port, use_reloader=False)
     except KeyboardInterrupt:
