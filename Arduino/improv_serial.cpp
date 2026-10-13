@@ -1,4 +1,5 @@
 #include "improv_serial.h"
+#include <WiFi.h>
 
 static const uint8_t IMPROV_HEADER[6] = {'I', 'M', 'P', 'R', 'O', 'V'};
 static const uint8_t IMPROV_VERSION = 0x01;
@@ -63,7 +64,7 @@ bool ImprovSerial::poll()
 void ImprovSerial::handlePacket(uint8_t type, const uint8_t *data, uint8_t length)
 {
   // Only RPC commands come our way; they carry command id and data length
-  if (type != TYPE_RPC_COMMAND || length < 2)
+  if (type != TYPE_RPC_COMMAND || length < 2 || data[1] + 2 > length)
   {
     sendError(ERROR_INVALID_RPC);
     return;
@@ -75,22 +76,106 @@ void ImprovSerial::handlePacket(uint8_t type, const uint8_t *data, uint8_t lengt
   switch (data[0])
   {
   case CMD_GET_CURRENT_STATE:
-  {
-    uint8_t state = STATE_PROVISIONED;
-    sendPacket(TYPE_CURRENT_STATE, &state, 1);
-    // No URL in the result: nothing for the installer's "Visit device"
-    sendResult(CMD_GET_CURRENT_STATE, {});
+    sendState();
+    if (_state == STATE_PROVISIONED)
+      // No URL in the result: nothing for the installer's "Visit device"
+      sendResult(CMD_GET_CURRENT_STATE, {});
     break;
-  }
 
   case CMD_GET_DEVICE_INFO:
     sendResult(CMD_GET_DEVICE_INFO, {_firmwareName, _firmwareVersion, _chipVariant, _deviceName});
+    break;
+
+  case CMD_GET_WIFI_NETWORKS:
+    sendNetworks();
+    break;
+
+  case CMD_WIFI_SETTINGS:
+    handleWifiSettings(data + 2, data[1]);
     break;
 
   default:
     sendError(ERROR_UNKNOWN_COMMAND);
     break;
   }
+}
+
+void ImprovSerial::sendNetworks()
+{
+  // The captive portal may have an async scan running or finished: reuse it
+  // rather than start another. Otherwise a blocking scan takes a couple of
+  // seconds; the installer shows a spinner meanwhile.
+  for (int i = 0; i < 100 && WiFi.scanComplete() == WIFI_SCAN_RUNNING; i++)
+    delay(50);
+  int found = WiFi.scanComplete();
+  if (found < 0)
+    found = WiFi.scanNetworks(false, false);
+  for (int i = 0; i < found; i++)
+  {
+    sendResult(CMD_GET_WIFI_NETWORKS, {WiFi.SSID(i), String(WiFi.RSSI(i)),
+                                       WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "NO" : "YES"});
+  }
+  sendResult(CMD_GET_WIFI_NETWORKS, {}); // an empty result ends the list
+}
+
+void ImprovSerial::handleWifiSettings(const uint8_t *data, uint8_t length)
+{
+  // ssid length, ssid, password length, password
+  if (length < 1 || data[0] + 1 > length)
+  {
+    sendError(ERROR_INVALID_RPC);
+    return;
+  }
+  const uint8_t ssidLength = data[0];
+  String ssid((const char *)(data + 1), ssidLength);
+  String password;
+  if (1 + ssidLength < length)
+  {
+    const uint8_t passwordLength = data[1 + ssidLength];
+    if (2 + ssidLength + passwordLength > length)
+    {
+      sendError(ERROR_INVALID_RPC);
+      return;
+    }
+    password = String((const char *)(data + 2 + ssidLength), passwordLength);
+  }
+  if (!_onWifi || !_onWifi(ssid, password))
+  {
+    sendError(ERROR_UNABLE_TO_CONNECT);
+    return;
+  }
+  setState(STATE_PROVISIONING);
+}
+
+void ImprovSerial::provisioned()
+{
+  setState(STATE_PROVISIONED);
+  // The result of the Wi-Fi command: the list of URLs to visit, left empty
+  sendResult(CMD_WIFI_SETTINGS, {});
+}
+
+void ImprovSerial::failed()
+{
+  setState(STATE_READY);
+  sendError(ERROR_UNABLE_TO_CONNECT);
+}
+
+void ImprovSerial::markProvisioned()
+{
+  if (_state != STATE_PROVISIONED)
+    setState(STATE_PROVISIONED);
+}
+
+void ImprovSerial::setState(State state)
+{
+  _state = state;
+  sendState();
+}
+
+void ImprovSerial::sendState()
+{
+  uint8_t data = (uint8_t)_state;
+  sendPacket(TYPE_CURRENT_STATE, &data, 1);
 }
 
 void ImprovSerial::sendError(uint8_t error)

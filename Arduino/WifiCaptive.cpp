@@ -196,6 +196,7 @@ bool WifiCaptive::startPortal()
     bool succesfullyConnected = false;
     // wait until SSID is provided
     unsigned long startTime = millis();
+    _portalRunning = true;
     while (1)
     {
         _dnsServer->processNextRequest();
@@ -223,19 +224,37 @@ bool WifiCaptive::startPortal()
                 saveWifiCredentials(_ssid, _password, _api_server);
                 // saveApiServer(_api_server);
                 succesfullyConnected = true;
+                if (_connectResultCallback)
+                {
+                    _connectResultCallback(true);
+                }
                 break;
             }
             else
             {
+                bool fromImprov = _externalProvision;
                 _ssid = "";
                 _password = "";
+                _externalProvision = false;
 
                 WiFi.disconnect();
                 WiFi.enableSTA(false);
+                if (_connectResultCallback)
+                {
+                    _connectResultCallback(false);
+                }
+                if (fromImprov)
+                {
+                    // The installer shows the failure and lets the user try
+                    // again, so keep the portal running
+                    WiFi.enableSTA(true);
+                    continue;
+                }
                 break;
             }
         }
     }
+    _portalRunning = false;
 
     // SSID provided, stop server
     WiFi.scanDelete();
@@ -347,6 +366,26 @@ uint8_t WifiCaptive::waitForConnectResult()
 void WifiCaptive::setIdleCallback(std::function<void()> func)
 {
     _idleCallback = func;
+}
+
+void WifiCaptive::setConnectResultCallback(std::function<void(bool connected)> func)
+{
+    _connectResultCallback = func;
+}
+
+void WifiCaptive::provision(const String &ssid, const String &password)
+{
+    // An empty server URL keeps the saved one (saveWifiCredentials)
+    _api_server = "";
+    _ssid = ssid;
+    _password = password;
+    _externalProvision = true;
+}
+
+void WifiCaptive::saveNetwork(const String &ssid, const String &password)
+{
+    readWifiCredentials();
+    saveWifiCredentials(ssid, password, ""); // first in the list, tried first
 }
 
 void WifiCaptive::setResetSettingsCallback(std::function<void()> func)

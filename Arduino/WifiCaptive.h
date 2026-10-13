@@ -63,6 +63,10 @@ private:
     // Called on every pass of the portal loop and of the connection wait, so
     // the sketch can keep answering the USB installer (improv_serial.*)
     std::function<void()> _idleCallback;
+    // Called with the outcome of each connection attempt the portal makes
+    std::function<void(bool connected)> _connectResultCallback;
+    bool _externalProvision = false; // credentials came from provision(), not the page
+    bool _portalRunning = false;
 
     WifiCredentials _savedWifis[WIFI_MAX_SAVED_CREDS];
 
@@ -101,6 +105,17 @@ public:
     bool autoConnect();
     /// @brief Called on every pass of the portal loop and connection wait
     void setIdleCallback(std::function<void()> func);
+    /// @brief Called with the outcome of each connection attempt made by the portal
+    void setConnectResultCallback(std::function<void(bool connected)> func);
+    /// @brief Hands the portal credentials from elsewhere (Improv over USB). The
+    /// portal loop connects with them as if the page had submitted them, and keeps
+    /// running if they fail; the saved server URL is kept.
+    void provision(const String &ssid, const String &password);
+    /// @brief True while startPortal() is waiting for credentials
+    bool isPortalRunning() { return _portalRunning; }
+    /// @brief Stores a network as the one to try first, without connecting; the
+    /// saved server URL is kept. For Improv requests outside the portal.
+    void saveNetwork(const String &ssid, const String &password);
 };
 
 extern WifiCaptive WifiCaptivePortal;

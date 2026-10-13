@@ -590,6 +590,7 @@ public:
     else
     {
       Serial.println(F("WiFi Connected. Downloading image"));
+      improv.markProvisioned();
       // Returns only on failure; on success it hibernates on the server's schedule
       fetchPhoto();
     }
@@ -775,6 +776,30 @@ void setup()
   // covers the installer's check right after it has flashed us.
   preferences.begin("data", false);
   improv.begin(Serial, FW_NAME, FW_VERSION, "ESP32-C6", "EPF photo frame");
+  // Wi-Fi settings from the installer. With the portal running, or about to
+  // run because no network is saved, the portal connects with them, saves
+  // them on success and reports back through the callback below. Otherwise
+  // (mid-wake-up, a network already saved) there is no time to try them:
+  // they are saved as the network to try first and reported done; a wrong
+  // password shows up as a Wi-Fi failure on the next wake-up.
+  improv.onWifiSettings([](const String &ssid, const String &password) {
+    if (WifiCaptivePortal.isPortalRunning() || !WifiCaptivePortal.isSaved())
+    {
+      WifiCaptivePortal.provision(ssid, password);
+    }
+    else
+    {
+      WifiCaptivePortal.saveNetwork(ssid, password);
+      improv.provisioned();
+    }
+    return true;
+  });
+  WifiCaptivePortal.setConnectResultCallback([](bool connected) {
+    if (connected)
+      improv.provisioned();
+    else
+      improv.failed();
+  });
   epd_busy_hook = []() { improv.poll(); };
   WifiCaptivePortal.setIdleCallback([]() { improv.poll(); });
   if (Serial.isPlugged())
