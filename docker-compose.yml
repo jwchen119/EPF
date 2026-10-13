@@ -38,9 +38,11 @@ services:
       - ./photos:/photos
     healthcheck:
       # The base image ships neither curl nor wget, so probe with python itself.
-      # /sleep only reads the config, so this never reaches out to Immich.
+      # /sleep only reads the config, so this never reaches out to Immich. The
+      # server writes the port it took to /tmp/epf-port: with EPF_PORT=auto, or
+      # with the EPF_PORT entry removed for a bridge network, only it knows.
       test: ["CMD", "python", "-c",
-             "import os, urllib.request; urllib.request.urlopen('http://localhost:%s/sleep' % os.environ.get('EPF_PORT', '5000'), timeout=5)"]
+             "import urllib.request; urllib.request.urlopen('http://localhost:%s/sleep' % open('/tmp/epf-port').read().strip(), timeout=5)"]
       interval: 60s
       timeout: 10s
       retries: 3

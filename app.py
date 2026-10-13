@@ -683,6 +683,9 @@ def _port_free(port):
         except OSError:
             return False
 
+# Where main() leaves the port it listens on, for docker-compose.yml's healthcheck
+PORT_FILE = '/tmp/epf-port'
+
 def listening_port():
     """
     EPF_PORT, or with "auto" (the image's default) 5000: the port Docker maps on
@@ -713,6 +716,12 @@ def main():
         threading.Thread(target=run_daily_ntp_sync, daemon=True).start()
 
         port = listening_port()
+        # For the compose healthcheck, which cannot tell which port "auto" took
+        try:
+            with open(PORT_FILE, 'w') as handle:
+                handle.write(str(port))
+        except OSError:
+            pass
         discovery.start(port)
         app.run(host='0.0.0.0', port=port, use_reloader=False)
     except KeyboardInterrupt:
