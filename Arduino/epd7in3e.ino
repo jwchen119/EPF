@@ -571,8 +571,10 @@ public:
 
     WiFi.mode(WIFI_STA);
 
-    // Check configuration button
-    if (shouldEnterConfigMode())
+    // Check configuration button. The check waits 1.5 s for the button to do
+    // anything, so it is skipped when the timer woke us: a hold at boot means
+    // the button itself woke the frame, or it was just powered on or reset.
+    if (manualWake && shouldEnterConfigMode())
     {
       Serial.println(F("Config button pressed, entering config mode..."));
       showSetupScreen();
