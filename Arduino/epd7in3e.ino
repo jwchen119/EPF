@@ -474,9 +474,13 @@ private:
     // Cut NFC module power before sleep (GPIO held LOW during deep sleep)
     nfcWriter.powerOff();
 
-    // Disconnect WiFi and turn off radio
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    // Disconnect WiFi and turn off radio, unless showStreamedImage() already
+    // did: disconnecting again only logs ESP_ERR_WIFI_NOT_INIT
+    if (WiFi.getMode() != WIFI_OFF)
+    {
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+    }
     fs_deinit();
     delay(50);
     // Print sleep duration for debugging
