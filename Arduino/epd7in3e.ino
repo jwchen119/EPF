@@ -10,6 +10,8 @@
 // #include "SimpleWiFiManager.h"
 #include <WiFiClientSecure.h>
 #include "driver/rtc_io.h"
+#include "driver/gpio.h"
+#include "esp_sleep.h"
 #include "config.h"
 #include "button.h"
 #include <Preferences.h>
@@ -42,6 +44,81 @@ SDA                       <>  19   // Chip select control
 
 Preferences preferences;
 ImprovSerial improv; // answers the web installer over USB
+
+// How the last refresh was waited out, kept in RTC memory through deep sleep
+// and printed at the next boot: on battery, where the refresh is slept
+// through, there is no serial port to watch it happen.
+enum RefreshWait : uint8_t
+{
+  REFRESH_NOT_YET,
+  REFRESH_POLLED,
+  REFRESH_SLEPT,
+  REFRESH_SLEEP_TIMED_OUT,
+};
+RTC_DATA_ATTR uint8_t lastRefreshWait = REFRESH_NOT_YET;
+RTC_DATA_ATTR uint32_t lastRefreshSleptMs = 0;
+
+// Waits out a panel refresh (~30 s, most of a wake-up) in light sleep instead
+// of polling BUSY with the CPU running, woken by BUSY rising at the end. Only
+// with the radio already off, since light sleep does not keep a Wi-Fi
+// connection, and not while USB is plugged in, where the installer is answered
+// during the refresh (epd_busy_hook). Returns false to have the driver poll.
+static bool sleepThroughRefresh()
+{
+  bool usbBlocks = Serial.isPlugged() && !REFRESH_SLEEP_ON_USB;
+  if (usbBlocks || WiFi.getMode() != WIFI_OFF)
+  {
+    lastRefreshWait = REFRESH_POLLED;
+    return false;
+  }
+  // BUSY drops just after the refresh command; a level wake-up armed while it
+  // is still high would fire at once
+  for (uint32_t t0 = millis(); digitalRead(BUSY_PIN) == HIGH && millis() - t0 < 100;)
+    delay(1);
+  if (digitalRead(BUSY_PIN) == HIGH)
+  {
+    lastRefreshWait = REFRESH_POLLED;
+    return false;
+  }
+
+  Serial.flush();
+  // Keep the panel out of reset and deselected while the CPU sleeps
+  gpio_hold_en((gpio_num_t)RST_PIN);
+  gpio_hold_en((gpio_num_t)CS_PIN);
+  gpio_wakeup_enable((gpio_num_t)BUSY_PIN, GPIO_INTR_HIGH_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
+  unsigned long start = millis();
+  bool refused = false;
+  while (digitalRead(BUSY_PIN) == LOW && millis() - start < REFRESH_SLEEP_TIMEOUT_MS)
+  {
+    esp_sleep_enable_timer_wakeup((uint64_t)(REFRESH_SLEEP_TIMEOUT_MS - (millis() - start)) * 1000ULL);
+    if (esp_light_sleep_start() != ESP_OK)
+    {
+      refused = true;
+      break;
+    }
+  }
+  unsigned long slept = millis() - start;
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  gpio_wakeup_disable((gpio_num_t)BUSY_PIN);
+  gpio_hold_dis((gpio_num_t)CS_PIN);
+  gpio_hold_dis((gpio_num_t)RST_PIN);
+
+  if (refused && digitalRead(BUSY_PIN) == LOW)
+  {
+    // Powering the panel off mid-refresh would cut the waveform short, so
+    // the driver polls out the rest
+    Serial.println(F("[EPD] light sleep refused, polling the rest of the refresh"));
+    lastRefreshWait = REFRESH_POLLED;
+    return false;
+  }
+  lastRefreshSleptMs = slept;
+  lastRefreshWait = digitalRead(BUSY_PIN) == HIGH ? REFRESH_SLEPT : REFRESH_SLEEP_TIMED_OUT;
+  Serial.printf("[EPD] refresh waited out in light sleep: %lu ms%s\n", slept,
+                lastRefreshWait == REFRESH_SLEPT ? "" : ", BUSY still low at the timeout");
+  return true;
+}
 
 class EpaperManager
 {
@@ -123,6 +200,7 @@ private:
     // Download and process image
     bool success = false;
     int sleepDuration = 0;
+    unsigned long sleepAnsweredAt = 0; // millis() when /sleep answered
     String photoUrl = "";
 
     // A 500 from the server, or a 202 while it is still processing, is retried
@@ -151,7 +229,8 @@ private:
 
         success = processImageData(&http);
 
-        // After successful image download, get sleep duration
+        // After successful image download, get sleep duration. This comes
+        // before the refresh, so the radio can be off during it.
         if (success)
         {
           // Setup new client for sleep request
@@ -186,6 +265,7 @@ private:
               if (sleepDuration > 0)
               {
                 sleepDuration /= 1000; // Convert to seconds
+                sleepAnsweredAt = millis();
               }
             }
           }
@@ -246,6 +326,14 @@ private:
       // A server found on the network is kept once it has delivered a photo
       if (preferences.getString("SERVER_BASE_URL") != url)
         preferences.putString("SERVER_BASE_URL", url);
+      showStreamedImage();
+      // The server counted the sleep from its answer, which came before the
+      // refresh, so the time the refresh took is already spent
+      if (sleepDuration > 0)
+      {
+        int spent = (millis() - sleepAnsweredAt) / 1000;
+        sleepDuration = sleepDuration > spent ? sleepDuration - spent : 0;
+      }
       hibernate(sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL);
     }
 
@@ -354,14 +442,25 @@ private:
     }
 
     free(buffer);
-    Serial.printf("[image] %d bytes of text received in %lu ms (first data after %lu ms), refreshing...\n",
+    Serial.printf("[image] %d bytes of text received in %lu ms (first data after %lu ms)\n",
                   totalBytesProcessed, millis() - started, firstData ? firstData - started : 0);
+
+    return true;
+  }
+
+  // Shows the image processImageData() streamed into the panel. Nothing more
+  // is fetched this wake-up, so the radio and the NFC tag are switched off
+  // first; with the radio off the refresh can be waited out in light sleep
+  // (sleepThroughRefresh()).
+  void showStreamedImage()
+  {
+    nfcWriter.powerOff();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
     unsigned long refreshStart = millis();
     epd.TurnOnDisplay();
     Serial.printf("[image] panel refresh took %lu ms\n", millis() - refreshStart);
     epd.Sleep();
-
-    return true;
   }
 
   // Enter deep sleep mode with calculated wake-up interval
@@ -625,7 +724,7 @@ public:
                   failures, (unsigned long)sleepSeconds, showError ? "yes" : "no");
     if (showError)
       showErrorScreen(sleepSeconds);
-    epd.Sleep(); // the failure paths never reach processImageData()'s Sleep()
+    epd.Sleep(); // the failure paths never reach showStreamedImage()'s Sleep()
     hibernate(sleepSeconds);
   }
 
@@ -801,6 +900,7 @@ void setup()
       improv.failed();
   });
   epd_busy_hook = []() { improv.poll(); };
+  epd_refresh_wait = sleepThroughRefresh;
   WifiCaptivePortal.setIdleCallback([]() { improv.poll(); });
   if (Serial.isPlugged())
   {
@@ -830,6 +930,15 @@ void setup()
   else
   {
     Serial.println("First boot or reset");
+  }
+  if (lastRefreshWait != REFRESH_NOT_YET && lastRefreshWait <= REFRESH_SLEEP_TIMED_OUT)
+  {
+    static const char *const waits[] = {"", "polled", "slept", "slept until the timeout"};
+    Serial.printf("Previous refresh: %s", waits[lastRefreshWait]);
+    if (lastRefreshWait != REFRESH_POLLED)
+      Serial.printf(", %lu ms", (unsigned long)lastRefreshSleptMs);
+    Serial.println();
+    lastRefreshWait = REFRESH_NOT_YET;
   }
   epaperManager.manualWake = (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER);
 

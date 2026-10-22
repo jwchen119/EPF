@@ -34,6 +34,17 @@
 #define SLEEP_INTERVAL 3600U           // Default sleep interval in seconds (1 hour)
 #define MIN_SLEEP_TIME 900U            // Minimum sleep time in seconds (15 minutes)
 
+// The panel refresh (~30 s) is waited out in light sleep, woken by BUSY, when
+// on battery; see sleepThroughRefresh() in epd7in3e.ino. This bounds the wait
+// like the driver's polling timeout does.
+#define REFRESH_SLEEP_TIMEOUT_MS 60000U
+// With USB plugged in the refresh is polled instead, so the installer keeps
+// getting answers. Build with -DREFRESH_SLEEP_ON_USB=1 to try the light-sleep
+// path on the bench, at the cost of those answers.
+#ifndef REFRESH_SLEEP_ON_USB
+#define REFRESH_SLEEP_ON_USB 0
+#endif
+
 // Failure handling. Consecutive failed wake-ups (no Wi-Fi, server unreachable,
 // download rejected) are counted in Preferences. The first QUIET_RETRIES keep
 // the current photo on screen and retry after MIN_SLEEP_TIME doubled each time

@@ -33,6 +33,7 @@
 #include "epd7in3e.h"
 
 void (*epd_busy_hook)(void) = nullptr;
+bool (*epd_refresh_wait)(void) = nullptr;
 
 Epd::~Epd() {
 };
@@ -230,7 +231,8 @@ void Epd::TurnOnDisplay(void)
 
     SendCommand(0x12); // DISPLAY_REFRESH
     SendData(0x00);
-    EPD_7IN3E_BusyHigh();
+    if (!epd_refresh_wait || !epd_refresh_wait())
+        EPD_7IN3E_BusyHigh();
 
     SendCommand(0x02); // POWER_OFF
     SendData(0x00);
