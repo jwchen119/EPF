@@ -8,7 +8,7 @@
 // manifest: same name means "update, keep the flash"; the version decides
 // whether an update is offered at all. Bump it with every release.
 #define FW_NAME "EPF photo frame firmware"
-#define FW_VERSION "1.2.0"
+#define FW_VERSION "1.3.0"
 // How long a USB-attached boot keeps answering Improv before carrying on, so
 // the installer's identity check right after flashing gets its reply.
 #define IMPROV_WAIT_MS 2000U
