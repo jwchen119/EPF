@@ -29,6 +29,8 @@
 #define WIFI_CONNECTION_ATTEMPTS 3
 // Define max connection timeout
 #define CONNECTION_TIMEOUT 15000
+// How long the portal stays up after connecting, so the page can read the outcome
+#define RESULT_LINGER_MS 3000
 // Local IP URL
 #define LocalIPURL "http://4.3.2.1"
 
@@ -65,8 +67,17 @@ private:
     std::function<void()> _idleCallback;
     // Called with the outcome of each connection attempt the portal makes
     std::function<void(bool connected)> _connectResultCallback;
-    bool _externalProvision = false; // credentials came from provision(), not the page
     bool _portalRunning = false;
+    // How the last connection attempt went, polled by the page (/result);
+    // written by the portal loop, read by the web server's task
+    enum PortalResult : uint8_t
+    {
+        RESULT_IDLE,
+        RESULT_CONNECTING,
+        RESULT_FAILED,
+        RESULT_CONNECTED
+    };
+    volatile PortalResult _portalResult = RESULT_IDLE;
 
     WifiCredentials _savedWifis[WIFI_MAX_SAVED_CREDS];
 
@@ -85,7 +96,8 @@ private:
     std::vector<Network> combineNetworks(std::vector<Network> &scanResults, WifiCaptive::WifiCredentials wifiCredentials[]);
 
 public:
-    /// @brief Starts WiFi configuration portal.
+    /// @brief Starts WiFi configuration portal. A failed attempt keeps it
+    /// running, so the page or the installer can try again.
     /// @return True if successfully connected to provided SSID, false otherwise.
     bool startPortal();
 

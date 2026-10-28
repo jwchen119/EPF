@@ -137,11 +137,17 @@ void WifiCaptive::setUpWebserver(AsyncWebServer &server, const IPAddress &localI
 		_ssid = ssid;
 		_password = pswd;
         _api_server = api_server;
+		_portalResult = RESULT_CONNECTING;
 		String mac = WiFi.macAddress();
 		String message =  "{\"ssid\":\"" + _ssid +"\",\"mac\":\"" + mac +"\"}";
 		request->send(200, "application/json", message); });
 
     server.addHandler(handler);
+
+    server.on("/result", HTTP_GET, [&](AsyncWebServerRequest *request)
+              {
+		static const char *const states[] = {"idle", "connecting", "failed", "connected"};
+		request->send(200, "application/json", String("{\"state\":\"") + states[_portalResult] + "\"}"); });
 
     server.onNotFound([](AsyncWebServerRequest *request)
                       { request->redirect(LocalIPURL); });
@@ -196,6 +202,7 @@ bool WifiCaptive::startPortal()
     bool succesfullyConnected = false;
     // wait until SSID is provided
     unsigned long startTime = millis();
+    _portalResult = RESULT_IDLE;
     _portalRunning = true;
     while (1)
     {
@@ -224,6 +231,7 @@ bool WifiCaptive::startPortal()
                 saveWifiCredentials(_ssid, _password, _api_server);
                 // saveApiServer(_api_server);
                 succesfullyConnected = true;
+                _portalResult = RESULT_CONNECTED;
                 if (_connectResultCallback)
                 {
                     _connectResultCallback(true);
@@ -232,10 +240,9 @@ bool WifiCaptive::startPortal()
             }
             else
             {
-                bool fromImprov = _externalProvision;
                 _ssid = "";
                 _password = "";
-                _externalProvision = false;
+                _portalResult = RESULT_FAILED;
 
                 WiFi.disconnect();
                 WiFi.enableSTA(false);
@@ -243,18 +250,30 @@ bool WifiCaptive::startPortal()
                 {
                     _connectResultCallback(false);
                 }
-                if (fromImprov)
-                {
-                    // The installer shows the failure and lets the user try
-                    // again, so keep the portal running
-                    WiFi.enableSTA(true);
-                    continue;
-                }
-                break;
+                // The page (through /result) or the installer shows the
+                // failure and lets the user try again, so keep the portal
+                // running, with its full time limit again
+                WiFi.enableSTA(true);
+                startTime = millis();
+                continue;
             }
         }
     }
     _portalRunning = false;
+
+    // Leave the page a moment to read the outcome before the network goes
+    if (succesfullyConnected)
+    {
+        for (unsigned long t = millis(); millis() - t < RESULT_LINGER_MS;)
+        {
+            _dnsServer->processNextRequest();
+            if (_idleCallback)
+            {
+                _idleCallback();
+            }
+            delay(DNS_INTERVAL);
+        }
+    }
 
     // SSID provided, stop server
     WiFi.scanDelete();
@@ -379,7 +398,7 @@ void WifiCaptive::provision(const String &ssid, const String &password)
     _api_server = "";
     _ssid = ssid;
     _password = password;
-    _externalProvision = true;
+    _portalResult = RESULT_CONNECTING;
 }
 
 bool WifiCaptive::tryNetwork(const String &ssid, const String &password)
