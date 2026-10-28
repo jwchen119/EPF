@@ -382,6 +382,15 @@ void WifiCaptive::provision(const String &ssid, const String &password)
     _externalProvision = true;
 }
 
+bool WifiCaptive::tryNetwork(const String &ssid, const String &password)
+{
+    if (connect(ssid, password) == WL_CONNECTED)
+        return true;
+    // Otherwise the driver keeps retrying a network that is not there
+    WiFi.disconnect();
+    return false;
+}
+
 void WifiCaptive::saveNetwork(const String &ssid, const String &password)
 {
     readWifiCredentials();

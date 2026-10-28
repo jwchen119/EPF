@@ -47,6 +47,9 @@ public:
   // The frame is on Wi-Fi already (a saved network connected): report so
   void markProvisioned();
 
+  // Whether the installer sent anything in the last ms milliseconds
+  bool activeWithin(unsigned long ms) const { return _heard && millis() - _lastHeard < ms; }
+
 private:
   enum PacketType : uint8_t
   {
@@ -76,6 +79,8 @@ private:
   const char *_deviceName = "";
   WifiHandler _onWifi;
   State _state = STATE_READY;
+  bool _heard = false;
+  unsigned long _lastHeard = 0;
 
   // Receive buffer: header (6) + version + type + length + data (<=255) + checksum
   uint8_t _buf[6 + 3 + 255 + 1];

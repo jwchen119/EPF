@@ -70,6 +70,9 @@ void ImprovSerial::handlePacket(uint8_t type, const uint8_t *data, uint8_t lengt
     return;
   }
 
+  _heard = true;
+  _lastHeard = millis();
+
   // Every command clears the previous error, as the spec asks
   sendError(ERROR_NONE);
 
@@ -139,12 +142,11 @@ void ImprovSerial::handleWifiSettings(const uint8_t *data, uint8_t length)
     }
     password = String((const char *)(data + 2 + ssidLength), passwordLength);
   }
-  if (!_onWifi || !_onWifi(ssid, password))
-  {
-    sendError(ERROR_UNABLE_TO_CONNECT);
-    return;
-  }
+  // Provisioning is reported first: the handler may settle the outcome at
+  // once, and the installer takes the last state it hears as the result
   setState(STATE_PROVISIONING);
+  if (!_onWifi || !_onWifi(ssid, password))
+    failed();
 }
 
 void ImprovSerial::provisioned()

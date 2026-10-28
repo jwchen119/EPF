@@ -116,6 +116,8 @@ public:
     /// @brief Stores a network as the one to try first, without connecting; the
     /// saved server URL is kept. For Improv requests outside the portal.
     void saveNetwork(const String &ssid, const String &password);
+    /// @brief Connects to a network without saving it; true when connected
+    bool tryNetwork(const String &ssid, const String &password);
 };
 
 extern WifiCaptive WifiCaptivePortal;

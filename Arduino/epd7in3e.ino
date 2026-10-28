@@ -45,6 +45,36 @@ SDA                       <>  19   // Chip select control
 Preferences preferences;
 ImprovSerial improv; // answers the web installer over USB
 
+// Wi-Fi settings the installer sent outside the portal, waiting to be tried
+// by tryInstallerWifi()
+bool installerWifiPending = false;
+String installerSsid, installerPassword;
+
+// Tries the Wi-Fi settings the installer sent outside the portal and keeps
+// them only if they connect, so a mistyped password cannot cut the frame off
+// the network it has. Runs outside the Improv handler, from the BUSY wait
+// and the wait for the installer, since connecting answers Improv itself.
+static void tryInstallerWifi()
+{
+  if (!installerWifiPending)
+    return;
+  installerWifiPending = false;
+  String ssid = installerSsid, password = installerPassword;
+  installerPassword = "";
+  Serial.printf("[improv] trying the network %s\n", ssid.c_str());
+  if (WifiCaptivePortal.tryNetwork(ssid, password))
+  {
+    WifiCaptivePortal.saveNetwork(ssid, password);
+    improv.provisioned();
+    Serial.println(F("[improv] connected; saved as the network to try first"));
+  }
+  else
+  {
+    improv.failed();
+    Serial.println(F("[improv] could not connect; nothing saved"));
+  }
+}
+
 // How the last refresh was waited out, kept in RTC memory through deep sleep
 // and printed at the next boot: on battery, where the refresh is slept
 // through, there is no serial port to watch it happen.
@@ -464,12 +494,36 @@ private:
   }
 
   // Enter deep sleep mode with calculated wake-up interval
+  // A wake-up is over, but the web installer may still be talking to the
+  // frame: after an update it shows its menu, and someone may be typing a
+  // Wi-Fi password. Stays awake while it does (see INSTALLER_IDLE_MS) and
+  // returns the milliseconds spent. Only with a USB host, so never on battery.
+  unsigned long stayForInstaller()
+  {
+    if (!Serial.isPlugged() || !improv.activeWithin(INSTALLER_IDLE_MS))
+      return 0;
+    Serial.println(F("[improv] installer connected, staying awake"));
+    unsigned long start = millis();
+    while (millis() - start < INSTALLER_STAY_MS && improv.activeWithin(INSTALLER_IDLE_MS))
+    {
+      improv.poll();
+      tryInstallerWifi();
+      delay(10);
+    }
+    return millis() - start;
+  }
+
   void hibernate(int sleepDuration = 0)
   {
+    unsigned long stayed = stayForInstaller();
+
     Serial.println("Preparing for deep sleep...");
 
-    // Use the provided duration, or the default interval when none was given
+    // Use the provided duration, or the default interval when none was given;
+    // time spent waiting for the installer comes off it, to keep the schedule
     int sleep_interval = sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL;
+    if ((unsigned long)sleep_interval > stayed / 1000 + 60)
+      sleep_interval -= stayed / 1000;
 
     // Cut NFC module power before sleep (GPIO held LOW during deep sleep)
     nfcWriter.powerOff();
@@ -881,12 +935,17 @@ void setup()
   // covers the installer's check right after it has flashed us.
   preferences.begin("data", false);
   improv.begin(Serial, FW_NAME, FW_VERSION, "ESP32-C6", "EPF photo frame");
+  // The installer asks for the state as soon as it opens the port, before
+  // Wi-Fi is up; with a network saved the frame counts as provisioned from
+  // the start (as ESPHome does), so it offers "Change Wi-Fi" rather than
+  // asking for a network the frame already has
+  if (WifiCaptivePortal.isSaved())
+    improv.markProvisioned();
   // Wi-Fi settings from the installer. With the portal running, or about to
   // run because no network is saved, the portal connects with them, saves
   // them on success and reports back through the callback below. Otherwise
-  // (mid-wake-up, a network already saved) there is no time to try them:
-  // they are saved as the network to try first and reported done; a wrong
-  // password shows up as a Wi-Fi failure on the next wake-up.
+  // (mid-wake-up, a network already saved) they are tried by
+  // tryInstallerWifi() and saved only if they connect.
   improv.onWifiSettings([](const String &ssid, const String &password) {
     if (WifiCaptivePortal.isPortalRunning() || !WifiCaptivePortal.isSaved())
     {
@@ -894,8 +953,9 @@ void setup()
     }
     else
     {
-      WifiCaptivePortal.saveNetwork(ssid, password);
-      improv.provisioned();
+      installerSsid = ssid;
+      installerPassword = password;
+      installerWifiPending = true;
     }
     return true;
   });
@@ -905,7 +965,10 @@ void setup()
     else
       improv.failed();
   });
-  epd_busy_hook = []() { improv.poll(); };
+  epd_busy_hook = []() {
+    improv.poll();
+    tryInstallerWifi();
+  };
   epd_refresh_wait = sleepThroughRefresh;
   WifiCaptivePortal.setIdleCallback([]() { improv.poll(); });
   if (Serial.isPlugged())

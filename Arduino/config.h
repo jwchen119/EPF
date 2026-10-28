@@ -12,6 +12,11 @@
 // How long a USB-attached boot keeps answering Improv before carrying on, so
 // the installer's identity check right after flashing gets its reply.
 #define IMPROV_WAIT_MS 2000U
+// A wake-up that is over stays awake while the installer is still talking to
+// the frame (someone typing a Wi-Fi password, say): until it has been quiet
+// for INSTALLER_IDLE_MS, at most INSTALLER_STAY_MS, like the portal.
+#define INSTALLER_IDLE_MS 120000U
+#define INSTALLER_STAY_MS 300000U
 
 // WiFi and HTTP configuration
 #define HTTP_TIMEOUT 50000U // HTTP request timeout in ms
