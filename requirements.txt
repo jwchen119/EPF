@@ -8,3 +8,5 @@ rawpy==0.23.2
 watchdog==6.0.0
 DateTime==5.5
 ntplib
+# Announces the server on the LAN (mDNS), see epf/discovery.py
+zeroconf==0.148.0

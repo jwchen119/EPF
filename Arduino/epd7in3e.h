@@ -59,6 +59,11 @@ Color Index
 // (Improv Serial) during the longest wait of a wake-up. Set by the sketch.
 extern void (*epd_busy_hook)(void);
 
+// Called right after DISPLAY_REFRESH to wait out the refresh itself instead of
+// polling BUSY, so the sketch can sleep the CPU meanwhile. Returns false when
+// it did not wait, and the driver then polls as usual. Set by the sketch.
+extern bool (*epd_refresh_wait)(void);
+
 class Epd : EpdIf
 {
 public:

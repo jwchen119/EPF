@@ -8,6 +8,7 @@ Server-side pieces of the e-paper photo frame.
   immich    talking to Immich, and choosing which photo comes next
   imaging   crop, enhance, dither and pack for the panel
   battery   voltage to percentage
+  discovery announcing the server on the local network (mDNS), for frames to find
 
 app.py holds the Flask app and the HTTP routes.
 """

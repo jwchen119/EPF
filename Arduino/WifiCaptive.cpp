@@ -137,11 +137,17 @@ void WifiCaptive::setUpWebserver(AsyncWebServer &server, const IPAddress &localI
 		_ssid = ssid;
 		_password = pswd;
         _api_server = api_server;
+		_portalResult = RESULT_CONNECTING;
 		String mac = WiFi.macAddress();
 		String message =  "{\"ssid\":\"" + _ssid +"\",\"mac\":\"" + mac +"\"}";
 		request->send(200, "application/json", message); });
 
     server.addHandler(handler);
+
+    server.on("/result", HTTP_GET, [&](AsyncWebServerRequest *request)
+              {
+		static const char *const states[] = {"idle", "connecting", "failed", "connected"};
+		request->send(200, "application/json", String("{\"state\":\"") + states[_portalResult] + "\"}"); });
 
     server.onNotFound([](AsyncWebServerRequest *request)
                       { request->redirect(LocalIPURL); });
@@ -196,6 +202,8 @@ bool WifiCaptive::startPortal()
     bool succesfullyConnected = false;
     // wait until SSID is provided
     unsigned long startTime = millis();
+    _portalResult = RESULT_IDLE;
+    _portalRunning = true;
     while (1)
     {
         _dnsServer->processNextRequest();
@@ -223,17 +231,47 @@ bool WifiCaptive::startPortal()
                 saveWifiCredentials(_ssid, _password, _api_server);
                 // saveApiServer(_api_server);
                 succesfullyConnected = true;
+                _portalResult = RESULT_CONNECTED;
+                if (_connectResultCallback)
+                {
+                    _connectResultCallback(true);
+                }
                 break;
             }
             else
             {
                 _ssid = "";
                 _password = "";
+                _portalResult = RESULT_FAILED;
 
                 WiFi.disconnect();
                 WiFi.enableSTA(false);
-                break;
+                if (_connectResultCallback)
+                {
+                    _connectResultCallback(false);
+                }
+                // The page (through /result) or the installer shows the
+                // failure and lets the user try again, so keep the portal
+                // running, with its full time limit again
+                WiFi.enableSTA(true);
+                startTime = millis();
+                continue;
             }
+        }
+    }
+    _portalRunning = false;
+
+    // Leave the page a moment to read the outcome before the network goes
+    if (succesfullyConnected)
+    {
+        for (unsigned long t = millis(); millis() - t < RESULT_LINGER_MS;)
+        {
+            _dnsServer->processNextRequest();
+            if (_idleCallback)
+            {
+                _idleCallback();
+            }
+            delay(DNS_INTERVAL);
         }
     }
 
@@ -349,6 +387,35 @@ void WifiCaptive::setIdleCallback(std::function<void()> func)
     _idleCallback = func;
 }
 
+void WifiCaptive::setConnectResultCallback(std::function<void(bool connected)> func)
+{
+    _connectResultCallback = func;
+}
+
+void WifiCaptive::provision(const String &ssid, const String &password)
+{
+    // An empty server URL keeps the saved one (saveWifiCredentials)
+    _api_server = "";
+    _ssid = ssid;
+    _password = password;
+    _portalResult = RESULT_CONNECTING;
+}
+
+bool WifiCaptive::tryNetwork(const String &ssid, const String &password)
+{
+    if (connect(ssid, password) == WL_CONNECTED)
+        return true;
+    // Otherwise the driver keeps retrying a network that is not there
+    WiFi.disconnect();
+    return false;
+}
+
+void WifiCaptive::saveNetwork(const String &ssid, const String &password)
+{
+    readWifiCredentials();
+    saveWifiCredentials(ssid, password, ""); // first in the list, tried first
+}
+
 void WifiCaptive::setResetSettingsCallback(std::function<void()> func)
 {
     _resetcallback = func;
@@ -379,11 +446,16 @@ void WifiCaptive::saveWifiCredentials(String ssid, String pass, String url)
     // Log.info("Saving wifi credentials: %s\r\n", ssid.c_str());
     Serial.println(url);
 
-    // Always update API server URL (even if WiFi credentials are unchanged)
-    Preferences dataPrefs;
-    dataPrefs.begin("data", false);
-    dataPrefs.putString("SERVER_BASE_URL", url);
-    dataPrefs.end();
+    // Update the API server URL even if the WiFi credentials are unchanged. An
+    // empty field keeps the saved one; with none saved, the frame looks for the
+    // server on the network (fetchPhoto() in epd7in3e.ino)
+    if (url.length())
+    {
+        Preferences dataPrefs;
+        dataPrefs.begin("data", false);
+        dataPrefs.putString("SERVER_BASE_URL", url);
+        dataPrefs.end();
+    }
 
     // Check if the credentials already exist
     for (u16_t i = 0; i < WIFI_MAX_SAVED_CREDS; i++)

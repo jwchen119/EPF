@@ -8,10 +8,15 @@
 // manifest: same name means "update, keep the flash"; the version decides
 // whether an update is offered at all. Bump it with every release.
 #define FW_NAME "EPF photo frame firmware"
-#define FW_VERSION "1.2.0"
+#define FW_VERSION "1.3.0"
 // How long a USB-attached boot keeps answering Improv before carrying on, so
 // the installer's identity check right after flashing gets its reply.
 #define IMPROV_WAIT_MS 2000U
+// A wake-up that is over stays awake while the installer is still talking to
+// the frame (someone typing a Wi-Fi password, say): until it has been quiet
+// for INSTALLER_IDLE_MS, at most INSTALLER_STAY_MS, like the portal.
+#define INSTALLER_IDLE_MS 120000U
+#define INSTALLER_STAY_MS 300000U
 
 // WiFi and HTTP configuration
 #define HTTP_TIMEOUT 50000U // HTTP request timeout in ms
@@ -34,6 +39,17 @@
 #define SLEEP_INTERVAL 3600U           // Default sleep interval in seconds (1 hour)
 #define MIN_SLEEP_TIME 900U            // Minimum sleep time in seconds (15 minutes)
 
+// The panel refresh (~30 s) is waited out in light sleep, woken by BUSY, when
+// on battery; see sleepThroughRefresh() in epd7in3e.ino. This bounds the wait
+// like the driver's polling timeout does.
+#define REFRESH_SLEEP_TIMEOUT_MS 60000U
+// With USB plugged in the refresh is polled instead, so the installer keeps
+// getting answers. Build with -DREFRESH_SLEEP_ON_USB=1 to try the light-sleep
+// path on the bench, at the cost of those answers.
+#ifndef REFRESH_SLEEP_ON_USB
+#define REFRESH_SLEEP_ON_USB 0
+#endif
+
 // Failure handling. Consecutive failed wake-ups (no Wi-Fi, server unreachable,
 // download rejected) are counted in Preferences. The first QUIET_RETRIES keep
 // the current photo on screen and retry after MIN_SLEEP_TIME doubled each time
@@ -52,6 +68,14 @@
 #define BUFFER_SIZE 131072U // Buffer size for image processing
 
 #define SERVER_BASE_URL "http://server.ip:15001"
+
+// Server discovery (fetchPhoto() in epd7in3e.ino): the mDNS service a server
+// announces, the protocol version this firmware speaks (its TXT "api", see
+// epf/discovery.py), and the name the frame uses on the network while looking
+#define DISCOVERY_SERVICE "epf"
+#define DISCOVERY_PROTO "tcp"
+#define SERVER_API_VERSION "1"
+#define DISCOVERY_HOSTNAME "epf-frame"
 #define PREFERENCES_SLEEP_TIME_KEY "refresh_rate"
 // #define PREFERENCES_DEVICE_REGISTRED_KEY "plugin"
 // #define PREFERENCES_FILENAME_KEY "filename"

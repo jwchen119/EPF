@@ -29,6 +29,8 @@
 #define WIFI_CONNECTION_ATTEMPTS 3
 // Define max connection timeout
 #define CONNECTION_TIMEOUT 15000
+// How long the portal stays up after connecting, so the page can read the outcome
+#define RESULT_LINGER_MS 3000
 // Local IP URL
 #define LocalIPURL "http://4.3.2.1"
 
@@ -63,6 +65,19 @@ private:
     // Called on every pass of the portal loop and of the connection wait, so
     // the sketch can keep answering the USB installer (improv_serial.*)
     std::function<void()> _idleCallback;
+    // Called with the outcome of each connection attempt the portal makes
+    std::function<void(bool connected)> _connectResultCallback;
+    bool _portalRunning = false;
+    // How the last connection attempt went, polled by the page (/result);
+    // written by the portal loop, read by the web server's task
+    enum PortalResult : uint8_t
+    {
+        RESULT_IDLE,
+        RESULT_CONNECTING,
+        RESULT_FAILED,
+        RESULT_CONNECTED
+    };
+    volatile PortalResult _portalResult = RESULT_IDLE;
 
     WifiCredentials _savedWifis[WIFI_MAX_SAVED_CREDS];
 
@@ -81,7 +96,8 @@ private:
     std::vector<Network> combineNetworks(std::vector<Network> &scanResults, WifiCaptive::WifiCredentials wifiCredentials[]);
 
 public:
-    /// @brief Starts WiFi configuration portal.
+    /// @brief Starts WiFi configuration portal. A failed attempt keeps it
+    /// running, so the page or the installer can try again.
     /// @return True if successfully connected to provided SSID, false otherwise.
     bool startPortal();
 
@@ -101,6 +117,19 @@ public:
     bool autoConnect();
     /// @brief Called on every pass of the portal loop and connection wait
     void setIdleCallback(std::function<void()> func);
+    /// @brief Called with the outcome of each connection attempt made by the portal
+    void setConnectResultCallback(std::function<void(bool connected)> func);
+    /// @brief Hands the portal credentials from elsewhere (Improv over USB). The
+    /// portal loop connects with them as if the page had submitted them, and keeps
+    /// running if they fail; the saved server URL is kept.
+    void provision(const String &ssid, const String &password);
+    /// @brief True while startPortal() is waiting for credentials
+    bool isPortalRunning() { return _portalRunning; }
+    /// @brief Stores a network as the one to try first, without connecting; the
+    /// saved server URL is kept. For Improv requests outside the portal.
+    void saveNetwork(const String &ssid, const String &password);
+    /// @brief Connects to a network without saving it; true when connected
+    bool tryNetwork(const String &ssid, const String &password);
 };
 
 extern WifiCaptive WifiCaptivePortal;

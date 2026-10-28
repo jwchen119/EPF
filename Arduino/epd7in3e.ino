@@ -3,12 +3,15 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <HTTPClient.h>
+#include <ESPmDNS.h>
 #include "epd7in3e.h"
 #include "FS.h"
 #include <ArduinoJson.h>
 // #include "SimpleWiFiManager.h"
 #include <WiFiClientSecure.h>
 #include "driver/rtc_io.h"
+#include "driver/gpio.h"
+#include "esp_sleep.h"
 #include "config.h"
 #include "button.h"
 #include <Preferences.h>
@@ -42,6 +45,111 @@ SDA                       <>  19   // Chip select control
 Preferences preferences;
 ImprovSerial improv; // answers the web installer over USB
 
+// Wi-Fi settings the installer sent outside the portal, waiting to be tried
+// by tryInstallerWifi()
+bool installerWifiPending = false;
+String installerSsid, installerPassword;
+
+// Tries the Wi-Fi settings the installer sent outside the portal and keeps
+// them only if they connect, so a mistyped password cannot cut the frame off
+// the network it has. Runs outside the Improv handler, from the BUSY wait
+// and the wait for the installer, since connecting answers Improv itself.
+static void tryInstallerWifi()
+{
+  if (!installerWifiPending)
+    return;
+  installerWifiPending = false;
+  String ssid = installerSsid, password = installerPassword;
+  installerPassword = "";
+  Serial.printf("[improv] trying the network %s\n", ssid.c_str());
+  if (WifiCaptivePortal.tryNetwork(ssid, password))
+  {
+    WifiCaptivePortal.saveNetwork(ssid, password);
+    improv.provisioned();
+    Serial.println(F("[improv] connected; saved as the network to try first"));
+  }
+  else
+  {
+    improv.failed();
+    Serial.println(F("[improv] could not connect; nothing saved"));
+  }
+}
+
+// How the last refresh was waited out, kept in RTC memory through deep sleep
+// and printed at the next boot: on battery, where the refresh is slept
+// through, there is no serial port to watch it happen.
+enum RefreshWait : uint8_t
+{
+  REFRESH_NOT_YET,
+  REFRESH_POLLED,
+  REFRESH_SLEPT,
+  REFRESH_SLEEP_TIMED_OUT,
+};
+RTC_DATA_ATTR uint8_t lastRefreshWait = REFRESH_NOT_YET;
+RTC_DATA_ATTR uint32_t lastRefreshSleptMs = 0;
+
+// Waits out a panel refresh (~30 s, most of a wake-up) in light sleep instead
+// of polling BUSY with the CPU running, woken by BUSY rising at the end. Only
+// with the radio already off, since light sleep does not keep a Wi-Fi
+// connection, and not while USB is plugged in, where the installer is answered
+// during the refresh (epd_busy_hook). Returns false to have the driver poll.
+static bool sleepThroughRefresh()
+{
+  bool usbBlocks = Serial.isPlugged() && !REFRESH_SLEEP_ON_USB;
+  if (usbBlocks || WiFi.getMode() != WIFI_OFF)
+  {
+    lastRefreshWait = REFRESH_POLLED;
+    return false;
+  }
+  // BUSY drops just after the refresh command; a level wake-up armed while it
+  // is still high would fire at once
+  for (uint32_t t0 = millis(); digitalRead(BUSY_PIN) == HIGH && millis() - t0 < 100;)
+    delay(1);
+  if (digitalRead(BUSY_PIN) == HIGH)
+  {
+    lastRefreshWait = REFRESH_POLLED;
+    return false;
+  }
+
+  Serial.flush();
+  // Keep the panel out of reset and deselected while the CPU sleeps
+  gpio_hold_en((gpio_num_t)RST_PIN);
+  gpio_hold_en((gpio_num_t)CS_PIN);
+  gpio_wakeup_enable((gpio_num_t)BUSY_PIN, GPIO_INTR_HIGH_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
+  unsigned long start = millis();
+  bool refused = false;
+  while (digitalRead(BUSY_PIN) == LOW && millis() - start < REFRESH_SLEEP_TIMEOUT_MS)
+  {
+    esp_sleep_enable_timer_wakeup((uint64_t)(REFRESH_SLEEP_TIMEOUT_MS - (millis() - start)) * 1000ULL);
+    if (esp_light_sleep_start() != ESP_OK)
+    {
+      refused = true;
+      break;
+    }
+  }
+  unsigned long slept = millis() - start;
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  gpio_wakeup_disable((gpio_num_t)BUSY_PIN);
+  gpio_hold_dis((gpio_num_t)CS_PIN);
+  gpio_hold_dis((gpio_num_t)RST_PIN);
+
+  if (refused && digitalRead(BUSY_PIN) == LOW)
+  {
+    // Powering the panel off mid-refresh would cut the waveform short, so
+    // the driver polls out the rest
+    Serial.println(F("[EPD] light sleep refused, polling the rest of the refresh"));
+    lastRefreshWait = REFRESH_POLLED;
+    return false;
+  }
+  lastRefreshSleptMs = slept;
+  lastRefreshWait = digitalRead(BUSY_PIN) == HIGH ? REFRESH_SLEPT : REFRESH_SLEEP_TIMED_OUT;
+  Serial.printf("[EPD] refresh waited out in light sleep: %lu ms%s\n", slept,
+                lastRefreshWait == REFRESH_SLEPT ? "" : ", BUSY still low at the timeout");
+  return true;
+}
+
 class EpaperManager
 {
 private:
@@ -51,12 +159,16 @@ private:
   StatusScreen screen{epd};
   String imageUrl = "";
   String failReason = ""; // why this wake-up produced no photo, for the error screen
+  bool serverUnreachable = false; // the last download got no HTTP answer at all
   int batteryMv = 0;      // measured once per wake-up in checkVoltage()
 
-  bool downloadImage()
+  // Fetch the photo from the server at url and show it. On success it
+  // hibernates on the server's schedule and never returns; on failure it sets
+  // failReason, and serverUnreachable when no HTTP answer came back at all.
+  bool downloadImage(const String &url)
   {
-    // preferences.begin("data, true");
-    imageUrl = preferences.getString("SERVER_BASE_URL");
+    imageUrl = url;
+    serverUnreachable = false;
     Serial.print("nas url: ");
     Serial.println(imageUrl);
     bool isHttps = imageUrl.startsWith("https://");
@@ -85,6 +197,7 @@ private:
       {
         Serial.println("Failed to initialize HTTPS connection");
         failReason = "Could not start the HTTPS client";
+        serverUnreachable = true;
         delete secureClient;
         return false;
       }
@@ -96,6 +209,7 @@ private:
       {
         Serial.println("Failed to initialize HTTP connection");
         failReason = "Could not start the HTTP client";
+        serverUnreachable = true;
         delete basicClient;
         return false;
       }
@@ -116,6 +230,7 @@ private:
     // Download and process image
     bool success = false;
     int sleepDuration = 0;
+    unsigned long sleepAnsweredAt = 0; // millis() when /sleep answered
     String photoUrl = "";
 
     // A 500 from the server, or a 202 while it is still processing, is retried
@@ -144,7 +259,8 @@ private:
 
         success = processImageData(&http);
 
-        // After successful image download, get sleep duration
+        // After successful image download, get sleep duration. This comes
+        // before the refresh, so the radio can be off during it.
         if (success)
         {
           // Setup new client for sleep request
@@ -179,6 +295,7 @@ private:
               if (sleepDuration > 0)
               {
                 sleepDuration /= 1000; // Convert to seconds
+                sleepAnsweredAt = millis();
               }
             }
           }
@@ -217,7 +334,10 @@ private:
       else if (httpCode > 0)
         failReason = "Server returned HTTP " + String(httpCode);
       else
+      {
         failReason = "Could not reach the server: " + http.errorToString(httpCode);
+        serverUnreachable = true;
+      }
     }
 
     http.end();
@@ -233,6 +353,17 @@ private:
       // the server's schedule; if /sleep did not answer, fall back to the
       // default interval rather than losing a day.
       preferences.putUChar(PREFERENCES_CONNECT_API_RETRY_COUNT, 0);
+      // A server found on the network is kept once it has delivered a photo
+      if (preferences.getString("SERVER_BASE_URL") != url)
+        preferences.putString("SERVER_BASE_URL", url);
+      showStreamedImage();
+      // The server counted the sleep from its answer, which came before the
+      // refresh, so the time the refresh took is already spent
+      if (sleepDuration > 0)
+      {
+        int spent = (millis() - sleepAnsweredAt) / 1000;
+        sleepDuration = sleepDuration > spent ? sleepDuration - spent : 0;
+      }
       hibernate(sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL);
     }
 
@@ -341,30 +472,69 @@ private:
     }
 
     free(buffer);
-    Serial.printf("[image] %d bytes of text received in %lu ms (first data after %lu ms), refreshing...\n",
+    Serial.printf("[image] %d bytes of text received in %lu ms (first data after %lu ms)\n",
                   totalBytesProcessed, millis() - started, firstData ? firstData - started : 0);
-    unsigned long refreshStart = millis();
-    epd.TurnOnDisplay();
-    Serial.printf("[image] panel refresh took %lu ms\n", millis() - refreshStart);
-    epd.Sleep();
 
     return true;
   }
 
+  // Shows the image processImageData() streamed into the panel. Nothing more
+  // is fetched this wake-up, so the radio and the NFC tag are switched off
+  // first; with the radio off the refresh can be waited out in light sleep
+  // (sleepThroughRefresh()).
+  void showStreamedImage()
+  {
+    nfcWriter.powerOff();
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    unsigned long refreshStart = millis();
+    epd.TurnOnDisplay();
+    Serial.printf("[image] panel refresh took %lu ms\n", millis() - refreshStart);
+    epd.Sleep();
+  }
+
   // Enter deep sleep mode with calculated wake-up interval
+  // A wake-up is over, but the web installer may still be talking to the
+  // frame: after an update it shows its menu, and someone may be typing a
+  // Wi-Fi password. Stays awake while it does (see INSTALLER_IDLE_MS) and
+  // returns the milliseconds spent. Only with a USB host, so never on battery.
+  unsigned long stayForInstaller()
+  {
+    if (!Serial.isPlugged() || !improv.activeWithin(INSTALLER_IDLE_MS))
+      return 0;
+    Serial.println(F("[improv] installer connected, staying awake"));
+    unsigned long start = millis();
+    while (millis() - start < INSTALLER_STAY_MS && improv.activeWithin(INSTALLER_IDLE_MS))
+    {
+      improv.poll();
+      tryInstallerWifi();
+      delay(10);
+    }
+    return millis() - start;
+  }
+
   void hibernate(int sleepDuration = 0)
   {
+    unsigned long stayed = stayForInstaller();
+
     Serial.println("Preparing for deep sleep...");
 
-    // Use the provided duration, or the default interval when none was given
+    // Use the provided duration, or the default interval when none was given;
+    // time spent waiting for the installer comes off it, to keep the schedule
     int sleep_interval = sleepDuration > 0 ? sleepDuration : SLEEP_INTERVAL;
+    if ((unsigned long)sleep_interval > stayed / 1000 + 60)
+      sleep_interval -= stayed / 1000;
 
     // Cut NFC module power before sleep (GPIO held LOW during deep sleep)
     nfcWriter.powerOff();
 
-    // Disconnect WiFi and turn off radio
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+    // Disconnect WiFi and turn off radio, unless showStreamedImage() already
+    // did: disconnecting again only logs ESP_ERR_WIFI_NOT_INIT
+    if (WiFi.getMode() != WIFI_OFF)
+    {
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+    }
     fs_deinit();
     delay(50);
     // Print sleep duration for debugging
@@ -459,8 +629,10 @@ public:
 
     WiFi.mode(WIFI_STA);
 
-    // Check configuration button
-    if (shouldEnterConfigMode())
+    // Check configuration button. The check waits 1.5 s for the button to do
+    // anything, so it is skipped when the timer woke us: a hold at boot means
+    // the button itself woke the frame, or it was just powered on or reset.
+    if (manualWake && shouldEnterConfigMode())
     {
       Serial.println(F("Config button pressed, entering config mode..."));
       showSetupScreen();
@@ -507,6 +679,65 @@ public:
     return false;
   }
 
+  // Looks for a server announcing itself on the local network (mDNS service
+  // _epf._tcp, see epf/discovery.py on the server). Blocks for about three
+  // seconds; returns the first compatible server's base URL, or "" if none
+  // answered.
+  String discoverServer()
+  {
+    if (!MDNS.begin(DISCOVERY_HOSTNAME))
+    {
+      Serial.println(F("mDNS could not start"));
+      return "";
+    }
+    String found = "";
+    int count = MDNS.queryService(DISCOVERY_SERVICE, DISCOVERY_PROTO);
+    Serial.printf("Servers found on the network: %d\n", count);
+    for (int i = 0; i < count && found.isEmpty(); i++)
+    {
+      // A server speaking a newer, incompatible protocol says so in "api"
+      if (MDNS.hasTxt(i, "api") && MDNS.txt(i, "api") != SERVER_API_VERSION)
+        continue;
+      IPAddress address = MDNS.address(i);
+      if (address == IPAddress())
+        continue;
+      String path = MDNS.hasTxt(i, "path") ? MDNS.txt(i, "path") : String("/");
+      if (path.endsWith("/"))
+        path.remove(path.length() - 1);
+      found = "http://" + address.toString() + ":" + String(MDNS.port(i)) + path;
+    }
+    MDNS.end();
+    return found;
+  }
+
+  // The saved server first. If there is none, or it could not be reached at
+  // all (a new address after a router restart, say), look for one on the
+  // network and try that. A server that answered with an error is not
+  // replaced: finding it again would not help. Returns only on failure.
+  void fetchPhoto()
+  {
+    String saved = preferences.getString("SERVER_BASE_URL");
+    if (saved.length())
+    {
+      downloadImage(saved);
+      if (!serverUnreachable)
+        return;
+    }
+
+    String found = discoverServer();
+    if (found.isEmpty() || found == saved)
+    {
+      if (saved.isEmpty())
+        failReason = "No server address is set, and no server was found on this network";
+      else if (found.isEmpty())
+        failReason += ", and no server was found on this network";
+      return;
+    }
+    Serial.print(F("Trying the server found on the network: "));
+    Serial.println(found);
+    downloadImage(found);
+  }
+
   void update()
   {
     Serial.println(F("Update method called"));
@@ -518,8 +749,9 @@ public:
     else
     {
       Serial.println(F("WiFi Connected. Downloading image"));
+      improv.markProvisioned();
       // Returns only on failure; on success it hibernates on the server's schedule
-      downloadImage();
+      fetchPhoto();
     }
 
     Serial.print(F("No new photo this wake-up: "));
@@ -552,7 +784,7 @@ public:
                   failures, (unsigned long)sleepSeconds, showError ? "yes" : "no");
     if (showError)
       showErrorScreen(sleepSeconds);
-    epd.Sleep(); // the failure paths never reach processImageData()'s Sleep()
+    epd.Sleep(); // the failure paths never reach showStreamedImage()'s Sleep()
     hibernate(sleepSeconds);
   }
 
@@ -703,7 +935,41 @@ void setup()
   // covers the installer's check right after it has flashed us.
   preferences.begin("data", false);
   improv.begin(Serial, FW_NAME, FW_VERSION, "ESP32-C6", "EPF photo frame");
-  epd_busy_hook = []() { improv.poll(); };
+  // The installer asks for the state as soon as it opens the port, before
+  // Wi-Fi is up; with a network saved the frame counts as provisioned from
+  // the start (as ESPHome does), so it offers "Change Wi-Fi" rather than
+  // asking for a network the frame already has
+  if (WifiCaptivePortal.isSaved())
+    improv.markProvisioned();
+  // Wi-Fi settings from the installer. With the portal running, or about to
+  // run because no network is saved, the portal connects with them, saves
+  // them on success and reports back through the callback below. Otherwise
+  // (mid-wake-up, a network already saved) they are tried by
+  // tryInstallerWifi() and saved only if they connect.
+  improv.onWifiSettings([](const String &ssid, const String &password) {
+    if (WifiCaptivePortal.isPortalRunning() || !WifiCaptivePortal.isSaved())
+    {
+      WifiCaptivePortal.provision(ssid, password);
+    }
+    else
+    {
+      installerSsid = ssid;
+      installerPassword = password;
+      installerWifiPending = true;
+    }
+    return true;
+  });
+  WifiCaptivePortal.setConnectResultCallback([](bool connected) {
+    if (connected)
+      improv.provisioned();
+    else
+      improv.failed();
+  });
+  epd_busy_hook = []() {
+    improv.poll();
+    tryInstallerWifi();
+  };
+  epd_refresh_wait = sleepThroughRefresh;
   WifiCaptivePortal.setIdleCallback([]() { improv.poll(); });
   if (Serial.isPlugged())
   {
@@ -733,6 +999,15 @@ void setup()
   else
   {
     Serial.println("First boot or reset");
+  }
+  if (lastRefreshWait != REFRESH_NOT_YET && lastRefreshWait <= REFRESH_SLEEP_TIMED_OUT)
+  {
+    static const char *const waits[] = {"", "polled", "slept", "slept until the timeout"};
+    Serial.printf("Previous refresh: %s", waits[lastRefreshWait]);
+    if (lastRefreshWait != REFRESH_POLLED)
+      Serial.printf(", %lu ms", (unsigned long)lastRefreshSleptMs);
+    Serial.println();
+    lastRefreshWait = REFRESH_NOT_YET;
   }
   epaperManager.manualWake = (wakeup_reason != ESP_SLEEP_WAKEUP_TIMER);
 

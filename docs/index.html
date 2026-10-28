@@ -226,10 +226,10 @@
   <section class="after hidden" id="after-factory">
     <h2 data-i18n="after.factory.title">完整安裝之後</h2>
     <ol>
-      <li data-i18n="after.factory.1">面板會顯示設定畫面，上面有網路名稱、網址與兩個 QR code。</li>
-      <li data-i18n="after.factory.2">用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路，或手動連線。</li>
-      <li data-i18n="after.factory.3">設定頁通常會自動開啟；沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。</li>
-      <li data-i18n="after.factory.4">填入家裡的 Wi-Fi、密碼與伺服器網址，例如 <code>http://192.168.1.10:15001</code>，儲存即可。</li>
+      <li data-i18n="after.factory.1">安裝完成後，安裝器會詢問家裡的 Wi-Fi：選擇網路、輸入密碼即可。伺服器在同一個網路上時會被自動找到。</li>
+      <li data-i18n="after.factory.2">若略過這一步，面板會顯示設定畫面，上面有網路名稱、網址與兩個 QR code。</li>
+      <li data-i18n="after.factory.3">用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路；設定頁通常會自動開啟，沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。</li>
+      <li data-i18n="after.factory.4">填入家裡的 Wi-Fi 與密碼並儲存。伺服器網址可以留空讓相框自動尋找，找不到時再填入，例如 <code>http://192.168.1.10:15001</code>。</li>
     </ol>
   </section>
 
@@ -278,10 +278,10 @@
       'after.update.title': '升級之後',
       'after.update.body': '相框會重新開機、連上原本的 Wi-Fi 並取得一張新照片，約 40 秒後出現在面板上。不需要任何設定。',
       'after.factory.title': '完整安裝之後',
-      'after.factory.1': '面板會顯示設定畫面，上面有網路名稱、網址與兩個 QR code。',
-      'after.factory.2': '用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路，或手動連線。',
-      'after.factory.3': '設定頁通常會自動開啟；沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。',
-      'after.factory.4': '填入家裡的 Wi-Fi、密碼與伺服器網址，例如 <code>http://192.168.1.10:15001</code>，儲存即可。',
+      'after.factory.1': '安裝完成後，安裝器會詢問家裡的 Wi-Fi：選擇網路、輸入密碼即可。伺服器在同一個網路上時會被自動找到。',
+      'after.factory.2': '若略過這一步，面板會顯示設定畫面，上面有網路名稱、網址與兩個 QR code。',
+      'after.factory.3': '用手機掃第一個 QR code 加入 <code>ESP32_ePAPER</code> 網路；設定頁通常會自動開啟，沒有的話掃第二個 QR code 或瀏覽 <code>http://4.3.2.1</code>。',
+      'after.factory.4': '填入家裡的 Wi-Fi 與密碼並儲存。伺服器網址可以留空讓相框自動尋找，找不到時再填入，例如 <code>http://192.168.1.10:15001</code>。',
       'version.label': '韌體版本',
       'version.changelog': '更新內容',
       'version.latest': '最新',
@@ -319,10 +319,10 @@
       'after.update.title': 'After the update',
       'after.update.body': 'The frame reboots, joins its Wi-Fi and fetches a new photo, which appears on the panel after about 40 seconds. Nothing to configure.',
       'after.factory.title': 'After a full install',
-      'after.factory.1': 'The panel shows a setup screen with the network name, the address and two QR codes.',
-      'after.factory.2': 'Scan the first QR code with your phone to join the <code>ESP32_ePAPER</code> network, or pick it by hand.',
-      'after.factory.3': 'The setup page usually opens by itself. If not, scan the second code or browse to <code>http://4.3.2.1</code>.',
-      'after.factory.4': 'Enter your Wi-Fi, its password and the server URL, for example <code>http://192.168.1.10:15001</code>, and save.',
+      'after.factory.1': 'Once installed, the installer asks for your Wi-Fi: pick the network and enter its password. A server on the same network is then found automatically.',
+      'after.factory.2': 'If you skip that, the panel shows a setup screen with the network name, the address and two QR codes.',
+      'after.factory.3': 'Scan the first QR code with your phone to join the <code>ESP32_ePAPER</code> network; the setup page usually opens by itself, otherwise scan the second code or browse to <code>http://4.3.2.1</code>.',
+      'after.factory.4': 'Enter your Wi-Fi and its password, and save. The server URL can be left empty for the frame to find; enter it, for example <code>http://192.168.1.10:15001</code>, if it is not found.',
       'version.label': 'Firmware version',
       'version.changelog': 'What’s new',
       'version.latest': 'latest',
@@ -453,22 +453,23 @@
     b.addEventListener('click', () => applyLang(b.dataset.lang));
   });
 
-  // The installer's dashboard always lists "Connect to Wi-Fi" / "Change Wi-Fi"
-  // (and "Visit Device" when the firmware offers a URL). The frame is set up
-  // through its own captive portal, so those entries only mislead here: hide
-  // them inside the installer dialog as it renders.
-  function hideWifiEntries() {
+  // The installer's dashboard lists "Visit Device" when the firmware offers a
+  // URL. The frame offers none, so it should not appear, but it would only
+  // mislead here: hide it inside the installer dialog as it renders. "Connect
+  // to Wi-Fi" / "Change Wi-Fi" stay: the firmware takes Wi-Fi settings over
+  // Improv Serial.
+  function hideVisitDevice() {
     document.querySelectorAll('ewt-install-dialog').forEach(dialog => {
       const root = dialog.shadowRoot;
       if (!root) return;
       root.querySelectorAll('ew-list-item').forEach(item => {
         const text = (item.textContent || '').trim();
-        if (/Wi-Fi|Visit Device/i.test(text)) item.style.display = 'none';
+        if (/Visit Device/i.test(text)) item.style.display = 'none';
       });
     });
   }
-  new MutationObserver(hideWifiEntries).observe(document.body, { childList: true, subtree: true });
-  setInterval(hideWifiEntries, 300);
+  new MutationObserver(hideVisitDevice).observe(document.body, { childList: true, subtree: true });
+  setInterval(hideVisitDevice, 300);
 
   // Web Serial is the one hard requirement
   if ('serial' in navigator) {

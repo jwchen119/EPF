@@ -372,11 +372,49 @@
         .then(response => response.json())
         .then(response => {
           displayWifiInfo(response);
-          hideLoader();
+          watchResult(ssid);
         })
         .catch(_ => {
           hideLoader();
         });
+    }
+
+    // Polls the outcome of the connection attempt. The frame keeps this page
+    // up after a failure and takes it down soon after connecting, so a long
+    // silence while connecting most likely means it connected.
+    function watchResult(ssid) {
+      var silentSince = null;
+      var poll = function () {
+        var controller = new AbortController();
+        var timer = setTimeout(() => controller.abort(), 3000);
+        fetch('/result', { signal: controller.signal })
+          .then(response => response.json())
+          .then(result => {
+            clearTimeout(timer);
+            silentSince = null;
+            if (result.state === 'connecting') {
+              setTimeout(poll, 1000);
+              return;
+            }
+            hideLoader();
+            if (result.state === 'failed') {
+              displayAlert(`Could not connect to ${ssid}. Check the password and try again.`, "warning");
+            } else if (result.state === 'connected') {
+              displayAlert(`Connected to ${ssid}. The frame is leaving setup mode and will show a new photo.`, "primary");
+            }
+          })
+          .catch(_ => {
+            clearTimeout(timer);
+            silentSince = silentSince || Date.now();
+            if (Date.now() - silentSince < 30000) {
+              setTimeout(poll, 1000);
+              return;
+            }
+            hideLoader();
+            displayAlert('The frame has left setup mode, which it does once it is connected. If no new photo appears, hold its button for 3 seconds to set it up again.', "primary");
+          });
+      };
+      setTimeout(poll, 1000);
     }
 
     function confirmSoftReset() {
@@ -584,8 +622,10 @@
       <i id="toggler" class="bi bi-eye" onclick="togglePassword()"></i>
     </div>
     <div class="form-group" id="custom_server_form_group">
-      <label for="server">API Server</label>
-      <input type="url" id="server" name="server" placeholder="Enter server ip (e.g. http://192.168.1.8:15001)">
+      <label for="server">API Server (optional)</label>
+      <input type="url" id="server" name="server" placeholder="Leave empty to find it automatically">
+      <small>Empty keeps the saved server, or lets the frame find one on this network.
+        Enter it if it is not found, e.g. http://192.168.1.8:15001</small>
     </div>
     <div class="form-group">
       <div class="alert alert-primary" id="message" role="alert" style="display: none;"></div>

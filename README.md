@@ -17,15 +17,15 @@ Two parts live in this repository and talk over HTTP:
 1. The ESP32 wakes up (timer, or a press on the button) and connects to WiFi.
 2. It calls `GET /download` on the server, sending its battery voltage in a request header.
 3. The server picks a photo from the configured Immich album, scales and rotates it to 800x480, applies saturation and contrast, dithers it to the six panel colours and packs two 4-bit pixels per byte.
-4. The firmware streams the response directly into the panel over SPI, without holding the full image in RAM, and refreshes the display.
+4. The firmware streams the response directly into the panel over SPI, without holding the full image in RAM.
 5. If an ST25DV NFC tag is fitted, the firmware writes the photo's Immich link (from the `X-Photo-Url` response header) to the tag, so tapping the frame with a phone opens the original photo.
-6. It calls `GET /sleep` to learn when to wake up next, which respects the configured quiet hours, then goes back to deep sleep.
+6. It calls `GET /sleep` to learn when to wake up next, which respects the configured quiet hours, switches WiFi off and refreshes the display, waiting for the panel in light sleep, then goes back to deep sleep.
 
 ## Features
 
 - **Immich as the photo source.** Drop photos into an album and they appear on the frame; nothing has to be copied or converted by hand. HEIC and RAW originals are handled on the server.
 - **Server-side processing.** Scaling, rotation, fit or fill, saturation, contrast and Floyd-Steinberg dithering all run on the server. The dithering core is written in Cython.
-- **Low power.** The ESP32 only wakes to fetch and show a photo, and the server chooses and renders the following photo right after handing one over, so a wake-up is about 36 seconds, 30 of which are the panel refreshing. The panel is put to sleep before hibernating; the original author measured around 16 uA in deep sleep.
+- **Low power.** The ESP32 only wakes to fetch and show a photo, and the server chooses and renders the following photo right after handing one over, so a timer wake-up has the radio on for about 5 seconds: 1.9 to connect, 0.4 for the server and the NFC tag, 2.4 to stream the image. The panel then refreshes for about 30 seconds with WiFi off while the ESP32 waits in light sleep, woken by the panel when it is done; on the developer's frame, at 18 wake-ups a day, that about halved the daily battery drain as read from the battery voltage. The panel is put to sleep before hibernating; the original author measured around 16 uA in deep sleep.
 - **Settings page.** Immich URL and album, rotation, fit or fill, random or newest-first ordering, enhancement sliders, quiet hours and wake-up interval, all saved from the browser. Shows the current and the next photo, with a button to swap the next one. Available in English, Traditional Chinese, Simplified Chinese and Japanese.
 - **Status and history.** The page shows whether Immich is reachable, whether the album still exists, when the frame last checked in and its battery level, plus a system log of check-ins, settings changes and errors.
 - **Low-battery notifications** over Telegram or LINE Messaging API, linked from the settings page. A service only counts as linked once a test message has actually been delivered.
@@ -73,6 +73,8 @@ docker compose up -d
 
 The settings page is then at `http://<host>:15001/`. The compose file bind-mounts `./config` and `./photos` so the settings, the shown-photo history, the event log and the notification credentials survive `docker compose pull` and a container rebuild. It also sets `TZ`, which matters: quiet hours and the wake-up schedule are evaluated in local time.
 
+The container runs on the host's network (`network_mode: host`) so that the server can announce itself on the LAN over mDNS, as `_epf._tcp`: the mechanism ESPHome devices use to be found by Home Assistant. Frame firmware that supports it finds the server without its address being typed in; with older firmware, or when the announcement cannot reach the frame (a guest network, client isolation, another subnet), enter the server URL in the captive portal as before. Host networking is Linux only. On Docker Desktop for Windows or macOS, replace `network_mode: host` and the `EPF_PORT` environment entry with `ports: ["15001:5000"]` and enter the URL by hand.
+
 Everything else is configured from the settings page; there is no config file to edit by hand.
 
 ### Environment variables
@@ -80,20 +82,26 @@ Everything else is configured from the settings page; there is no config file to
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `IMMICH_API_KEY` | required | Immich web UI, Account Settings, API Keys. Read once at start-up. |
-| `EPF_PORT` | `15001` | Host port for the settings page and for the frame. Must match the server URL saved in the frame's captive portal. |
-| `TZ` | `Asia/Taipei` | Local timezone. Without it the container runs in UTC and the quiet hours shift by the UTC offset. |
+| `EPF_PORT` | `15001` with Compose, otherwise `auto` | Port the server listens on: the settings page, and the port in the frame's server URL. `auto` takes 5000, or the first free port from 15001 when 5000 is taken, as by the DSM web interface on a Synology with host networking; the log names the port. |
+| `EPF_DISCOVERY` | `on` | `off` stops the server announcing itself on the LAN. |
+| `EPF_ADVERTISE_ADDRESS` | the address of the default route | Address to announce instead, on a host with several networks. |
+| `TZ` | `Asia/Taipei` with Compose, otherwise `Etc/UTC` | Local timezone. Left at UTC, the quiet hours shift by the UTC offset. |
 | `IMMICH_PHOTO_DEST` | `/photos` | Where `tracking.txt` and `events.jsonl` are kept. No photos are written to disk. |
 
 ### Run without Compose
 
 ```bash
 docker run --name epf \
+    --network host \
+    -e EPF_PORT=15001 \
     -e IMMICH_API_KEY='<your-immich-api-key>' \
     -e TZ=Asia/Taipei \
     -v "$(pwd)/config:/config" \
     -v "$(pwd)/photos:/photos" \
-    -d -p 15001:5000 jwchen119/epf
+    -d jwchen119/epf
 ```
+
+On Docker Desktop, use `-p 15001:5000` instead of `--network host -e EPF_PORT=15001`; the frame then needs the server URL entered by hand.
 
 The prebuilt image is on [Docker Hub](https://hub.docker.com/r/jwchen119/epf). To build it yourself, run `docker build -t jwchen119/epf .` in the repository root, or uncomment `build: .` in `docker-compose.yml`.
 
@@ -127,7 +135,7 @@ The rest serve the settings page: `/setting` (GET renders, POST saves), `/status
 
 ### Install from your browser (easiest)
 
-The web installer at **https://jwchen119.github.io/EPF/** writes a released firmware to the frame from Chrome or Edge, with nothing to install. It offers two install types per version: *Update* writes only the application and keeps the Wi-Fi and server settings, and *Full install* writes everything and erases the settings, for a brand-new board. A frame on firmware 1.2.0 or later identifies itself to the installer over the USB port (Improv Serial), so the installer shows its current version and updates it directly; older firmware is asked about "Erase device" first, and the box must stay unticked to keep the settings. Wake the frame first, since its USB port only exists while it is awake: a short press keeps it awake for about 40 seconds, holding the button for 3 seconds at boot opens the setup screen and keeps it awake for 5 minutes.
+The web installer at **https://jwchen119.github.io/EPF/** writes a released firmware to the frame from Chrome or Edge, with nothing to install. It offers two install types per version: *Update* writes only the application and keeps the Wi-Fi and server settings, and *Full install* writes everything and erases the settings, for a brand-new board. A frame on firmware 1.2.0 or later identifies itself to the installer over the USB port (Improv Serial), so the installer shows its current version and updates it directly; older firmware is asked about "Erase device" first, and the box must stay unticked to keep the settings. Firmware 1.3.0 and later also takes its Wi-Fi network over the same connection: the installer asks for it after a full install, and its "Connect to Wi-Fi" / "Change Wi-Fi" entry changes it later, so the setup portal is not needed. A network the frame cannot connect to is reported as failed and not saved. Wake the frame first, since its USB port only exists while it is awake: a short press keeps it awake for about 40 seconds, and while the installer is talking to it the frame stays awake until the installer has been idle for two minutes (five minutes at most); holding the button for 3 seconds at boot opens the setup screen and keeps it awake for 5 minutes.
 
 The page is the `docs/` folder of this repository, served by GitHub Pages. To publish a new release, build the firmware and run `python docs/firmware/add_version.py <version> --notes-en ... --notes-zh ...`, which copies the images into `docs/firmware/v<version>/`, writes the manifests and updates the version list.
 
@@ -159,8 +167,8 @@ The NFC library is required to compile even if no tag is fitted; at runtime the 
 
 1. Power the frame and hold the button for about 3 seconds while it boots. The serial monitor prints `long press`, the panel shows a setup screen with the network name, the address and two QR codes, and the ESP32 starts an access point named `ESP32_ePAPER`. A frame with no saved network shows the same screen on its own.
 2. Connect to it (scan the first QR code, or pick the network by hand); the setup page opens automatically. If it does not, scan the second code or browse to `http://4.3.2.1`. The access point closes after 5 minutes.
-3. Pick your WiFi network, enter its password, and enter the server URL, for example `http://192.168.1.10:15001`. Up to five networks are remembered and tried in turn.
-4. Save. The frame connects, fetches the first photo and goes to sleep.
+3. Pick your WiFi network and enter its password. The server URL can be left empty: the frame then finds a server announcing itself on the network (see the Docker section above). Enter it by hand, for example `http://192.168.1.10:15001`, when the server runs on Docker Desktop or the frame cannot find it; an empty field later keeps the saved URL. Up to five networks are remembered and tried in turn.
+4. Save. The frame connects, fetches the first photo and goes to sleep. If it cannot connect (a mistyped password, say), the page says so and stays open for another try, and the 5 minutes start again.
 
 To change the settings later, hold the button during a reboot the same way. Saved networks are listed on the page and can be selected without retyping their password.
 
@@ -169,6 +177,7 @@ To change the settings later, hold the button during a reboot the same way. Save
 - Wakes on the schedule the server returns, or immediately on a short button press.
 - Below 3.05 V the frame clears the screen and sleeps for 24 hours to protect the battery.
 - A server error (HTTP 500) is retried up to five times, ten seconds apart within the same wake-up. If the photo arrives but no schedule does, the frame sleeps for an hour.
+- When the saved server cannot be reached at all, for instance because it got a new address after a router restart, the frame looks for a server on the network (about three seconds) and switches to it once it has delivered a photo.
 - When a wake-up ends without a new photo (no Wi-Fi, server unreachable, download rejected), the frame keeps the current photo and quietly tries again after 15, 30 and then 60 minutes. If the fourth attempt also fails it draws an error screen explaining what went wrong, with the server address, network, battery level and when it will try next, and from then on checks every 6 hours to spare the battery. A button press always retries at once, restarts the schedule from 15 minutes, and shows the error screen if that attempt fails too. The first successful photo clears the count.
 - Right after first setup the server answers with an error until an album is configured on the settings page. Once it is, either wait for the next retry or press the button to fetch the first photo immediately.
 - When the battery is empty the panel shows a charging reminder instead of going blank.
