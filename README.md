@@ -8,7 +8,7 @@ Two parts live in this repository and talk over HTTP:
 
 | Part | Where | What it does |
 | --- | --- | --- |
-| Server | `app.py`, `epf/`, `cpy.pyx`, `templates/`, `static/` | Flask app in Docker. Talks to Immich, processes photos, serves the settings page, logs check-ins, sends low-battery notifications. |
+| Server | `app.py`, `epf/`, `templates/`, `static/` | Flask app in Docker. Talks to Immich, processes photos, serves the settings page, logs check-ins, sends low-battery notifications. |
 | Firmware | `Arduino/` | ESP32-C6 sketch. WiFi captive portal, image download, panel driver, optional NFC tag writing, deep sleep. |
 | Enclosure | `CAD/` | STEP files for the frame parts. |
 
@@ -24,9 +24,10 @@ Two parts live in this repository and talk over HTTP:
 ## Features
 
 - **Immich as the photo source.** Drop photos into an album and they appear on the frame; nothing has to be copied or converted by hand. HEIC and RAW originals are handled on the server.
-- **Server-side processing.** Scaling, rotation, fit or fill, saturation, contrast and Floyd-Steinberg dithering all run on the server. The dithering core is written in Cython.
+- **Server-side processing.** Scaling, rotation, fit or fill, saturation, contrast and Floyd-Steinberg dithering all run on the server, the dithering compiled with Numba. Besides the classic dithering there is a colour-corrected variant that keeps skin from turning yellow on this panel.
 - **Low power.** The ESP32 only wakes to fetch and show a photo, and the server chooses and renders the following photo right after handing one over, so a timer wake-up has the radio on for about 5 seconds: 1.9 to connect, 0.4 for the server and the NFC tag, 2.4 to stream the image. The panel then refreshes for about 30 seconds with WiFi off while the ESP32 waits in light sleep, woken by the panel when it is done; on the developer's frame, at 18 wake-ups a day, that about halved the daily battery drain as read from the battery voltage. The panel is put to sleep before hibernating; the original author measured around 16 uA in deep sleep.
 - **Settings page.** Immich URL and album, rotation, fit or fill, random or newest-first ordering, enhancement sliders, quiet hours and wake-up interval, all saved from the browser. Shows the current and the next photo, with a button to swap the next one. Available in English, Traditional Chinese, Simplified Chinese and Japanese.
+- **Panel calibration.** The frame can show a colour card; photograph it with a phone, mark its corners on the settings page, and the panel's actual colours are measured and used by the colour-corrected dithering.
 - **Status and history.** The page shows whether Immich is reachable, whether the album still exists, when the frame last checked in and its battery level, plus a system log of check-ins, settings changes and errors.
 - **Low-battery notifications** over Telegram or LINE Messaging API, linked from the settings page. A service only counts as linked once a test message has actually been delivered.
 - **Captive portal.** Hold the button at boot and the ESP32 opens a WiFi access point with a setup page for up to five saved networks and the server URL. Adapted from the [TRMNL firmware](https://github.com/usetrmnl/firmware/tree/main/lib/wificaptive).
@@ -110,6 +111,7 @@ The prebuilt image is on [Docker Hub](https://hub.docker.com/r/jwchen119/epf). T
 | Path in the container | Contents |
 | --- | --- |
 | `/config/config.yaml` | Settings saved from the web page. Created with defaults on first start and watched for external edits. |
+| `/config/calibration.json` | The panel colours measured from photos of the calibration card, once applied. |
 | `/config/credentials.json` | Telegram and LINE tokens, written only after a successful test message. |
 | `/photos/tracking.txt` | Which photos of the current album have already been shown. |
 | `/photos/events.jsonl` | The system log shown on the settings page. |
@@ -123,13 +125,13 @@ The two the firmware uses:
 | `GET /download` | frame | The next photo as a hex byte stream, prepared in advance so the frame is not kept awake while the album is listed and the image processed. Request header `batteryCap` carries the battery voltage in millivolts; response header `X-Photo-Url` carries the photo's Immich link for the NFC tag. |
 | `GET /sleep` | frame | `{current_time, next_wakeup, sleep_duration}`; `sleep_duration` is in milliseconds and already accounts for the quiet hours. |
 
-The rest serve the settings page: `/setting` (GET renders, POST saves), `/status`, `/log`, `/log/clear`, `/next` (GET shows, POST re-chooses), `/preview/original`, `/preview/next`, and `/notify/bind`, `/notify/unbind`, `/notify/channels`, `/notify/test`. The settings page has no authentication, so keep the port on your LAN or behind a reverse proxy that adds some.
+The rest serve the settings page: `/setting` (GET renders, POST saves), `/status`, `/log`, `/log/clear`, `/next` (GET shows, POST re-chooses), `/preview/original`, `/preview/next`, `/calibration` (GET status, POST `/calibration/card`, `/measure`, `/apply`, `/reset`), and `/notify/bind`, `/notify/unbind`, `/notify/channels`, `/notify/test`. The settings page has no authentication, so keep the port on your LAN or behind a reverse proxy that adds some.
 
 ### Notes for developers
 
-- `cpy.so` is a prebuilt Linux x86-64 Cython module committed to the repository. Changing `cpy.pyx` has no effect until you rebuild it on Linux (`cython` plus the NumPy headers) and replace the binary. The module cannot be loaded on Windows, so `python app.py` only runs on Linux or in Docker.
+- The dithering is in `epf/dither.py`, compiled by Numba the first time it runs (about a second) and cached in `epf/__pycache__`. It replaced a prebuilt Cython module that only loaded on Linux with Python 3.9; the classic method's output is byte-identical to it.
 - The server-side module layout, the image pipeline and the exact HTTP contract are documented in `CLAUDE.md`.
-- Three palettes must agree: the pure-RGB palette inside `cpy.pyx`, the measured panel colours in `epf/imaging.py`, and the `EPD_7IN3E_*` colour codes in `Arduino/epd7in3e.h`.
+- Three palettes must agree: the pure-RGB palette in `epf/dither.py`, the measured panel colours in `epf/imaging.py`, and the `EPD_7IN3E_*` colour codes in `Arduino/epd7in3e.h`.
 
 ## Firmware
 

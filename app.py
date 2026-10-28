@@ -7,6 +7,7 @@ contract with the firmware is /download and /sleep; the rest serves the settings
 page. Run with `python app.py`, or `docker compose up -d`.
 """
 import io
+import json
 import os
 import socket
 import threading
@@ -16,10 +17,13 @@ from datetime import datetime, timedelta
 import ntplib
 from flask import (Flask, jsonify, redirect, render_template, request, send_file,
                    url_for)
-from epf import (battery, config, credentials, discovery, eventlog, imaging, immich,
-                 notify, state, tracking)
+from epf import (battery, calibration, config, credentials, discovery, eventlog, imaging,
+                 immich, notify, state, tracking)
 
 app = Flask(__name__)
+# Photos of the calibration card come straight from phones, a few MB each
+app.config['MAX_CONTENT_LENGTH'] = 48 * 1024 * 1024
+CALIBRATION_MAX_PHOTOS = 6
 
 # ---------------------------------------------------------------- template glue
 
@@ -107,6 +111,7 @@ def settings():
 
     # Field name -> how to read it. Anything absent is treated as text.
     number = {'rotation': int, 'enhanced': float, 'contrast': float, 'strength': float,
+              'cc_strength': float, 'cc_chroma': float, 'cc_warmth': float, 'cc_tint': float,
               'sleep_start_hour': int, 'sleep_start_minute': int,
               'sleep_end_hour': int, 'sleep_end_minute': int, 'wakeup_interval': int,
               'battery_threshold': int, 'min_interval_hours': int}
@@ -136,6 +141,10 @@ def settings():
 
     if submitted['immich']['rotation'] not in [0, 90, 180, 270]:
         return render(error="Rotation must be 0, 90, 180, or 270 degrees")
+    if submitted['immich'].get('dither_mode') not in DITHER_MODES:
+        return render(error="Unknown dithering method")
+    for key, (low, high) in CC_RANGES.items():
+        submitted['immich'][key] = min(max(submitted['immich'][key], low), high)
 
     try:
         config.write_file(submitted)
@@ -356,16 +365,30 @@ def upcoming_photo():
 
 # ------------------------------------------------ preparing the next photo
 
-RENDER_KEYS = ('rotation', 'display_mode', 'enhanced', 'contrast', 'strength')
+RENDER_KEYS = ('rotation', 'display_mode', 'enhanced', 'contrast', 'strength',
+               'cc_strength', 'cc_chroma', 'cc_warmth', 'cc_tint')
+# classic_cc's fine-tuning, kept within what the settings page offers
+CC_RANGES = {'cc_strength': (0.0, 1.0), 'cc_chroma': (0.5, 1.5),
+             'cc_warmth': (-10.0, 10.0), 'cc_tint': (-10.0, 10.0)}
+# See epf/dither.py: classic, and classic with the colour-correction table
+DITHER_MODES = ('classic', 'classic_cc')
+
+def next_dither():
+    """ The dither the next render uses; an unknown one (a removed method) is classic """
+    mode = config.immich().get('dither_mode', 'classic')
+    return mode if mode in DITHER_MODES else 'classic'
 
 def render_settings():
     """ The settings a rendered image depends on, to tell whether a prepared one is still right """
     settings_now = config.immich()
-    return {key: settings_now[key] for key in RENDER_KEYS}
+    used = {key: settings_now[key] for key in RENDER_KEYS}
+    used['dither'] = next_dither()
+    used['calibration'] = calibration.version()
+    return used
 
-def render_asset(selected):
+def render_asset(selected, dither_mode='classic'):
     """
-    Fetch, process and pack one asset for the panel.
+    Fetch, process and pack one asset for the panel, with the given dither.
 
     Returns (BytesIO of C-array text, timing, fallback) where timing holds the
     milliseconds of each step and the size of the original, and fallback is
@@ -400,7 +423,22 @@ def render_asset(selected):
             raise error
     lap('decode_ms')
 
-    settings_now = config.immich()
+    settings_now = dict(config.immich())
+    panel_palette = None
+    dot_gain = None
+    correction = None
+    if dither_mode == 'classic_cc':
+        # The correction table is built from the panel's calibration
+        measured = calibration.current()
+        panel_palette = measured['palette']
+        dot_gain = measured['dot_gain']
+        # The correction table looks after colour, so classic's saturation
+        # boost fades out as the correction comes in: at 0% this is classic.
+        # Contrast and strength apply as set.
+        share = settings_now['cc_strength']
+        settings_now['enhanced'] = 1.0 + (1.0 - share) * (settings_now['enhanced'] - 1.0)
+        correction = {'strength': share, 'chroma': settings_now['cc_chroma'],
+                      'warmth': settings_now['cc_warmth'], 'tint': settings_now['cc_tint']}
     processed = imaging.scale_img_in_memory(
         image,
         rotation=settings_now['rotation'],
@@ -408,6 +446,10 @@ def render_asset(selected):
         enhanced=settings_now['enhanced'],
         contrast=settings_now['contrast'],
         strength=settings_now['strength'],
+        dither_mode=dither_mode,
+        panel_palette=panel_palette,
+        dot_gain=dot_gain,
+        correction=correction,
     )
     lap('process_ms')
     c_code = imaging.pack_bmp_for_panel(processed)
@@ -440,7 +482,7 @@ def prepare_next_photo():
                 return
 
             settings_used = render_settings()
-            c_code, timing, fallback = render_asset(asset)
+            c_code, timing, fallback = render_asset(asset, settings_used['dither'])
             if state.next_photo['asset'] is asset and settings_used == render_settings():
                 state.next_photo['rendered'] = {
                     'asset_id': asset['id'],
@@ -470,6 +512,67 @@ def _int_header(name):
     except (TypeError, ValueError):
         return None
 
+# ------------------------------------------------------- colour calibration
+
+@app.route('/calibration')
+def calibration_status():
+    """ The panel calibration in use, saved or default """
+    return _no_store(jsonify(calibration.current()))
+
+@app.route('/calibration/card', methods=['POST'])
+def show_calibration_card():
+    """ Show the calibration card on the next wake-up, once, instead of a photo """
+    state.calibration['pending'] = True
+    return _no_store(jsonify({'calibration': 'next wake-up'}))
+
+@app.route('/calibration/measure', methods=['POST'])
+def measure_calibration():
+    """
+    Measure uploaded photos of the calibration card. Form fields: 'photo', one
+    or more files, and 'corners', a JSON list holding for each photo the card's
+    four corners as fractions of its width and height. Nothing is saved until
+    /calibration/apply, and the photos are not kept.
+    """
+    files = request.files.getlist('photo')
+    try:
+        corners = json.loads(request.form.get('corners', ''))
+    except ValueError:
+        corners = None
+    if (not files or len(files) > CALIBRATION_MAX_PHOTOS or not isinstance(corners, list)
+            or len(corners) != len(files)):
+        return jsonify({'error': 'bad_request'}), 400
+    result = calibration.measure([(upload.filename or f'photo {number}', upload.read(), marked)
+                                  for number, (upload, marked) in enumerate(zip(files, corners), 1)])
+    state.calibration['measured'] = result if result['usable'] else None
+    return _no_store(jsonify(result))
+
+@app.route('/calibration/apply', methods=['POST'])
+def apply_calibration():
+    """ Keep the last measurement as the panel's calibration """
+    result = state.calibration['measured']
+    if not result:
+        return jsonify({'error': 'nothing_measured'}), 409
+    try:
+        calibration.save(result)
+    except OSError as error:
+        eventlog.record('error', where='calibration', message=str(error), ip=eventlog.client_ip())
+        return jsonify({'error': 'write_failed'}), 500
+    state.calibration['measured'] = None
+    eventlog.record('calibrated', ip=eventlog.client_ip(), photos_used=result['photos_used'],
+                    dot_gain=result['dot_gain'])
+    state.clear_rendered()
+    start_preparing()
+    return _no_store(jsonify(calibration.current()))
+
+@app.route('/calibration/reset', methods=['POST'])
+def reset_calibration():
+    """ Go back to the default panel colours """
+    calibration.reset()
+    eventlog.record('calibration_reset', ip=eventlog.client_ip())
+    state.clear_rendered()
+    start_preparing()
+    return _no_store(jsonify(calibration.current()))
+
 @app.route('/download', methods=['GET'])
 def process_and_download():
     """
@@ -485,6 +588,20 @@ def process_and_download():
             state.battery.update({'voltage': reported_mv, 'updated': time.time()})
     except (TypeError, ValueError):
         reported_mv = 0
+
+    if state.calibration['pending']:
+        # One wake-up shows the calibration card instead of a photo, to be
+        # photographed for /calibration/measure; the prepared next photo is
+        # left for the wake-up after
+        state.calibration['pending'] = False
+        card = imaging.convert_to_c_code_in_memory(imaging.Image.fromarray(imaging.calibration_card()))
+        eventlog.record('checkin', ip=eventlog.client_ip(), album='(calibration card)',
+                        battery_mv=int(reported_mv) if reported_mv else None,
+                        battery_pct=battery.percentage(reported_mv) if reported_mv else None,
+                        uptime_ms=_int_header('X-Uptime-Ms'), wake=request.headers.get('X-Wake'),
+                        dither='calibration')
+        return send_file(card, mimetype='text/plain', as_attachment=True,
+                         download_name='calibration.c')
 
     album = config.immich()['album']
     if not config.immich()['url'] or not album:
@@ -511,6 +628,7 @@ def process_and_download():
         # Use the photo already chosen for this wake-up when there is one, so the
         # frame gets exactly what the settings page was showing as "next".
         rendered = None
+        dither_used = next_dither()
         if state.next_photo['asset'] and state.next_photo['album'] == album:
             selected = state.next_photo['asset']
             albumid = state.next_photo['album_id']
@@ -534,7 +652,7 @@ def process_and_download():
             fallback = rendered.get('preview_fallback')
             timing['prerendered'] = True
         else:
-            c_code, render_timing, fallback = render_asset(selected)
+            c_code, render_timing, fallback = render_asset(selected, dither_used)
             timing.update(render_timing)
             timing['prerendered'] = False
 
@@ -561,7 +679,8 @@ def process_and_download():
                         wake=request.headers.get('X-Wake'),
                         timing=timing,
                         # Why the photo came from Immich's preview, if it did
-                        preview_fallback=fallback)
+                        preview_fallback=fallback,
+                        dither=dither_used)
 
         if reported_mv:
             # Sent on a thread: the frame gives up after 50 seconds and must not

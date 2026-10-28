@@ -8,7 +8,7 @@
 
 | 部分 | 位置 | 功能 |
 | --- | --- | --- |
-| 伺服器 | `app.py`、`epf/`、`cpy.pyx`、`templates/`、`static/` | Docker 裡的 Flask 應用程式。連接 Immich、處理照片、提供設定頁、記錄相框回報、發送低電量通知。 |
+| 伺服器 | `app.py`、`epf/`、`templates/`、`static/` | Docker 裡的 Flask 應用程式。連接 Immich、處理照片、提供設定頁、記錄相框回報、發送低電量通知。 |
 | 韌體 | `Arduino/` | ESP32-C6 程式。Wi-Fi 設定入口、下載影像、面板驅動、選配的 NFC 標籤寫入、深度睡眠。 |
 | 外殼 | `CAD/` | 相框零件的 STEP 檔。 |
 
@@ -24,9 +24,10 @@
 ## 功能
 
 - **以 Immich 為照片來源。** 把照片丟進相簿就會出現在相框上，不需要手動複製或轉檔。HEIC 與 RAW 原圖由伺服器處理。
-- **伺服器端處理。** 縮放、旋轉、符合或填滿、飽和度、對比與 Floyd-Steinberg 抖色都在伺服器執行，抖色核心以 Cython 撰寫。
+- **伺服器端處理。** 縮放、旋轉、符合或填滿、飽和度、對比與 Floyd-Steinberg 抖色都在伺服器執行，抖色以 Numba 編譯。除了經典抖色，還有一種經過色偏校正的版本，避免膚色在這塊面板上偏黃。
 - **低功耗。** ESP32 只在抓取與顯示照片時醒來，而且伺服器在交出一張照片後會立刻選好並處理下一張，所以定時喚醒時無線電只開約 5 秒：連線 1.9 秒、伺服器與 NFC 標籤 0.4 秒、串流圖片 2.4 秒。接著面板在 Wi-Fi 關閉的狀態下刷新約 30 秒，ESP32 在淺層睡眠中等待，面板完成時再把它喚醒；在開發者的相框上，每天 18 次喚醒，從電池電壓推算每天的耗電約減半。進入休眠前會先讓面板睡眠；原作者量得深度睡眠約 16 uA。
 - **設定頁。** Immich 網址與相簿、旋轉、符合或填滿、隨機或最新優先、增強滑桿、安靜時段與喚醒間隔，全部在瀏覽器中儲存。可看到目前與下一張照片，並有按鈕可以換掉下一張。提供英文、繁體中文、簡體中文與日文。
+- **面板校正。** 相框可以顯示一張色卡；用手機拍下來，在設定頁標出四個角，就能量出面板實際的顏色，供色偏校正的抖色使用。
 - **狀態與歷史。** 頁面顯示 Immich 是否可連、相簿是否還存在、相框上次回報的時間與電量，以及回報、設定變更與錯誤的系統記錄。
 - **低電量通知**，透過 Telegram 或 LINE Messaging API，在設定頁綁定。只有在測試訊息確實送達後才算綁定成功。
 - **設定入口（Captive portal）。** 開機時長按按鈕，ESP32 會開啟一個 Wi-Fi 熱點與設定頁，可儲存最多五組網路與伺服器網址。改編自 [TRMNL 韌體](https://github.com/usetrmnl/firmware/tree/main/lib/wificaptive)。
@@ -110,6 +111,7 @@ docker run --name epf \
 | 容器內路徑 | 內容 |
 | --- | --- |
 | `/config/config.yaml` | 從網頁儲存的設定。第一次啟動時以預設值建立，並監看外部修改。 |
+| `/config/calibration.json` | 從色卡照片量到並套用的面板顏色。 |
 | `/config/credentials.json` | Telegram 與 LINE 的權杖，只在測試訊息成功後寫入。 |
 | `/photos/tracking.txt` | 目前相簿中哪些照片已經顯示過。 |
 | `/photos/events.jsonl` | 設定頁顯示的系統記錄。 |
@@ -123,13 +125,13 @@ docker run --name epf \
 | `GET /download` | 相框 | 下一張照片的十六進位位元組串流，已預先準備好，相框不必在列出相簿與處理影像時保持清醒。請求標頭 `batteryCap` 帶電池電壓（毫伏）；回應標頭 `X-Photo-Url` 帶照片的 Immich 連結供 NFC 標籤使用。 |
 | `GET /sleep` | 相框 | `{current_time, next_wakeup, sleep_duration}`；`sleep_duration` 單位為毫秒，已考慮安靜時段。 |
 
-其餘端點服務設定頁：`/setting`（GET 顯示，POST 儲存）、`/status`、`/log`、`/log/clear`、`/next`（GET 顯示，POST 重新選擇）、`/preview/original`、`/preview/next`，以及 `/notify/bind`、`/notify/unbind`、`/notify/channels`、`/notify/test`。設定頁沒有身分驗證，請把埠留在區網內，或放在會加上驗證的反向代理後面。
+其餘端點服務設定頁：`/setting`（GET 顯示，POST 儲存）、`/status`、`/log`、`/log/clear`、`/next`（GET 顯示，POST 重新選擇）、`/preview/original`、`/preview/next`、`/calibration`（GET 狀態，POST `/calibration/card`、`/measure`、`/apply`、`/reset`），以及 `/notify/bind`、`/notify/unbind`、`/notify/channels`、`/notify/test`。設定頁沒有身分驗證，請把埠留在區網內，或放在會加上驗證的反向代理後面。
 
 ### 給開發者的備註
 
-- `cpy.so` 是提交在倉庫裡、預先編譯好的 Linux x86-64 Cython 模組。修改 `cpy.pyx` 不會有效果，除非在 Linux 上重新建置（`cython` 加 NumPy 標頭）並替換該二進位檔。這個模組無法在 Windows 載入，所以 `python app.py` 只能在 Linux 或 Docker 中執行。
+- 抖色在 `epf/dither.py`，第一次執行時由 Numba 編譯（約一秒），並快取在 `epf/__pycache__`。它取代了原本只能在 Linux、Python 3.9 載入的預編譯 Cython 模組；經典模式的輸出與原模組逐位元組相同。
 - 伺服器端的模組配置、影像管線與完整的 HTTP 契約記錄在 `CLAUDE.md`。
-- 三組調色盤必須一致：`cpy.pyx` 內的純 RGB 調色盤、`epf/imaging.py` 內實測的面板顏色，以及 `Arduino/epd7in3e.h` 內的 `EPD_7IN3E_*` 顏色代碼。
+- 三組調色盤必須一致：`epf/dither.py` 內的純 RGB 調色盤、`epf/imaging.py` 內實測的面板顏色，以及 `Arduino/epd7in3e.h` 內的 `EPD_7IN3E_*` 顏色代碼。
 
 ## 韌體
 
