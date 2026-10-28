@@ -5,8 +5,8 @@
       "version": "1.3.0",
       "date": "2026-10-28",
       "notes": {
-        "en": "Finds the server on the network without a typed address. Wi-Fi can be set from the web installer. The panel refresh is waited out in light sleep with Wi-Fi off, and timer wake-ups skip the button check: about half the battery use.",
-        "zh-TW": "自動在網路上找到伺服器，不必輸入網址。可以在網頁安裝器設定 Wi-Fi。面板刷新期間關閉 Wi-Fi 並進入淺層睡眠，定時喚醒略過按鈕檢查：耗電約減半。"
+        "en": "Finds the server on the network without a typed address. Wi-Fi can be set from the web installer; a network that does not connect is reported rather than saved, and the setup page now says so too and stays open for another try. The panel refresh is waited out in light sleep with Wi-Fi off, and timer wake-ups skip the button check: about half the battery use.",
+        "zh-TW": "自動在網路上找到伺服器，不必輸入網址。可以在網頁安裝器設定 Wi-Fi；連不上的網路會回報失敗而不會被儲存，設定頁現在也會顯示失敗並保持開啟讓你重試。面板刷新期間關閉 Wi-Fi 並進入淺層睡眠，定時喚醒略過按鈕檢查：耗電約減半。"
       },
       "server": "jwchen119/epf:1.3.0"
     },
