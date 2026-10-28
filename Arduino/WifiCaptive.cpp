@@ -356,6 +356,32 @@ uint8_t WifiCaptive::waitForConnectResult(uint32_t timeout)
         return WiFi.waitForConnectResult();
     }
 
+    if (!_eventsHooked)
+    {
+        WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info)
+                     {
+            if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED)
+            {
+                _apMissing = false;
+            }
+            else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+            {
+                uint8_t reason = info.wifi_sta_disconnected.reason;
+                if (reason == WIFI_REASON_NO_AP_FOUND ||
+                    reason == WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY ||
+                    reason == WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD ||
+                    reason == WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD)
+                {
+                    _apMissing = true;
+                }
+            } });
+        _eventsHooked = true;
+    }
+    // The driver needs a scan (~2.5 s) to report a missing network, so a flag
+    // left over from an earlier attempt can be cleared here
+    _apMissing = false;
+
+    unsigned long start = millis();
     unsigned long timeoutmillis = millis() + timeout;
     uint8_t status = WiFi.status();
 
@@ -368,6 +394,12 @@ uint8_t WifiCaptive::waitForConnectResult(uint32_t timeout)
         status = WiFi.status();
         // @todo detect additional states, connect happens, then dhcp then get ip, there is some delay here, make sure not to timeout if waiting on IP
         if (status == WL_CONNECTED || status == WL_CONNECT_FAILED)
+        {
+            return status;
+        }
+        // A network that is not there: waiting the whole timeout for it cost
+        // 15 s per attempt, three attempts per saved network
+        if (_apMissing && millis() - start >= NO_AP_TIMEOUT)
         {
             return status;
         }
