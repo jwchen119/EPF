@@ -457,21 +457,24 @@ void WifiCaptive::saveWifiCredentials(String ssid, String pass, String url)
         dataPrefs.end();
     }
 
-    // Check if the credentials already exist
-    for (u16_t i = 0; i < WIFI_MAX_SAVED_CREDS; i++)
+    // The network goes first, as the one to try first, and replaces any saved
+    // entry of the same name: one that is saved already used to be left where
+    // it was, so choosing it again changed nothing, and a new password for it
+    // added a second entry that kept the old one
+    WifiCredentials kept[WIFI_MAX_SAVED_CREDS];
+    int count = 0;
+    kept[count++] = {ssid, pass};
+    for (int i = 0; i < WIFI_MAX_SAVED_CREDS && count < WIFI_MAX_SAVED_CREDS; i++)
     {
-        if (_savedWifis[i].ssid == ssid && _savedWifis[i].pswd == pass)
+        if (_savedWifis[i].ssid != "" && _savedWifis[i].ssid != ssid)
         {
-            return; // Avoid saving duplicate networks
+            kept[count++] = _savedWifis[i];
         }
     }
-
-    for (u16_t i = WIFI_MAX_SAVED_CREDS - 1; i > 0; i--)
+    for (int i = 0; i < WIFI_MAX_SAVED_CREDS; i++)
     {
-        _savedWifis[i] = _savedWifis[i - 1];
+        _savedWifis[i] = i < count ? kept[i] : WifiCredentials{"", ""};
     }
-
-    _savedWifis[0] = {ssid, pass};
 
     Preferences preferences;
     preferences.begin("wificaptive", false);
@@ -723,7 +726,13 @@ bool WifiCaptive::autoConnect()
     }
 
     // Log.info("Last used network unavailable, scanning for known networks...\r\n");
+    // Nothing has scanned at this point, so without this every saved network
+    // got three 15 s attempts, in range or not; now only those in range are
+    // tried, strongest first
+    WiFi.mode(WIFI_STA);
+    WiFi.scanNetworks(false);
     std::vector<Network> scanResults = getScannedUniqueNetworks(false);
+    WiFi.scanDelete();
     std::vector<WifiCaptive::WifiCredentials> sortedNetworks = matchNetworks(scanResults, _savedWifis);
     // if no networks found, try to connect to saved wifis
     if (sortedNetworks.size() == 0)
@@ -735,7 +744,8 @@ bool WifiCaptive::autoConnect()
     WiFi.mode(WIFI_STA);
     for (auto &network : sortedNetworks)
     {
-        if (network.ssid == "" || (network.ssid == _savedWifis[0].ssid && network.pswd == _savedWifis[0].pswd))
+        // Skips the last used network, which has just had its attempts
+        if (network.ssid == "" || (network.ssid == _savedWifis[last_used_index].ssid && network.pswd == _savedWifis[last_used_index].pswd))
         {
             continue;
         }
