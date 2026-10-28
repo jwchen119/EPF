@@ -1,6 +1,15 @@
 {
-  "latest": "1.3.0",
+  "latest": "1.3.1",
   "versions": [
+    {
+      "version": "1.3.1",
+      "date": "2026-10-28",
+      "notes": {
+        "en": "Choosing a saved Wi-Fi network again, in the installer or on the setup page, makes it the one tried first; a new password replaces the old entry instead of adding another. When the usual network is gone, the frame scans and tries only the saved networks in range (55 s instead of 152 s measured). No server change.",
+        "zh-TW": "在安裝器或設定頁重新選擇已儲存的 Wi-Fi，會改成優先連線；換了密碼會取代舊項目，不再多存一筆。平常的網路不在時，相框會先掃描，只試範圍內的已存網路（實測由 152 秒縮短為 55 秒）。伺服器沒有變動。"
+      },
+      "server": "jwchen119/epf:1.3.0"
+    },
     {
       "version": "1.3.0",
       "date": "2026-10-28",
