@@ -405,6 +405,7 @@ const STATUS_LABELS = {
     connected: 'status.connected',
     album_missing: 'status.albumMissing',
     unauthorized: 'status.unauthorized',
+    no_key: 'status.noKey',
     unreachable: 'status.unreachable',
     not_configured: 'status.notConfigured',
     server_error: 'status.serverError',
@@ -559,6 +560,9 @@ function logDetail(entry) {
         if (entry.ip) {
             parts.push(entry.ip);
         }
+    } else if (entry.event === 'startup' && entry.version) {
+        // Which release started, to tell an update apart from a restart
+        parts.push('v' + entry.version);
     } else if (entry.event === 'tracking_reset' && entry.reason) {
         parts.push(entry.reason);
     } else if (entry.event === 'error' && entry.message) {

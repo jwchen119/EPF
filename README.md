@@ -131,6 +131,7 @@ The rest serve the settings page: `/setting` (GET renders, POST saves), `/status
 
 - The dithering is in `epf/dither.py`, compiled by Numba the first time it runs (about a second) and cached in `epf/__pycache__`. It replaced a prebuilt Cython module that only loaded on Linux with Python 3.9; the classic method's output is byte-identical to it.
 - The server-side module layout, the image pipeline and the exact HTTP contract are documented in `CLAUDE.md`.
+- `tests/test_render.py` checks that the image sent to the frame has not changed, and which file formats are decoded. It runs inside the image: `docker run --rm -v "$PWD/tests:/app/tests" jwchen119/epf python -m unittest discover -s tests -v`.
 - Three palettes must agree: the pure-RGB palette in `epf/dither.py`, the measured panel colours in `epf/imaging.py`, and the `EPD_7IN3E_*` colour codes in `Arduino/epd7in3e.h`.
 
 ## Firmware
@@ -164,6 +165,8 @@ pio device monitor      # serial output at 115200 baud
 4. Choose a partition scheme with at least 1.9 MB of app space (for example "Minimal SPIFFS"), then upload.
 
 The NFC library is required to compile even if no tag is fitted; at runtime the firmware simply skips NFC writes when it cannot find one.
+
+The Library Manager lists several libraries under the async web server names; take the ones by ESP32Async. With the original me-no-dev library, abandoned since, or a copy of it, compiling stops at `no matching function for call to 'AsyncWebServerRequest::beginResponse(int, const char [10], const uint8_t [...], const int&)'`.
 
 ### First-time setup
 

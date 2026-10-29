@@ -131,6 +131,7 @@ docker run --name epf \
 
 - 抖色在 `epf/dither.py`，第一次執行時由 Numba 編譯（約一秒），並快取在 `epf/__pycache__`。它取代了原本只能在 Linux、Python 3.9 載入的預編譯 Cython 模組；經典模式的輸出與原模組逐位元組相同。
 - 伺服器端的模組配置、影像管線與完整的 HTTP 契約記錄在 `CLAUDE.md`。
+- `tests/test_render.py` 檢查送到相框的影像有沒有改變，以及哪些檔案格式會被解碼。它在映像檔內執行：`docker run --rm -v "$PWD/tests:/app/tests" jwchen119/epf python -m unittest discover -s tests -v`。
 - 三組調色盤必須一致：`epf/dither.py` 內的純 RGB 調色盤、`epf/imaging.py` 內實測的面板顏色，以及 `Arduino/epd7in3e.h` 內的 `EPD_7IN3E_*` 顏色代碼。
 
 ## 韌體
@@ -164,6 +165,8 @@ pio device monitor      # 序列埠輸出，115200 baud
 4. 選擇應用程式空間至少 1.9 MB 的分割方案（例如「Minimal SPIFFS」），然後上傳。
 
 即使沒有裝 NFC 標籤，編譯仍需要該函式庫；執行時找不到標籤會直接略過 NFC 寫入。
+
+Library Manager 裡有好幾個同名的非同步網頁伺服器函式庫，請選 ESP32Async 的版本。用的若是已停止維護的 me-no-dev 原版或它的複製版本，編譯會停在 `no matching function for call to 'AsyncWebServerRequest::beginResponse(int, const char [10], const uint8_t [...], const int&)'`。
 
 ### 初次設定
 

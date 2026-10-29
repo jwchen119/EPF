@@ -18,8 +18,8 @@ from datetime import datetime, timedelta
 import ntplib
 from flask import (Flask, jsonify, redirect, render_template, request, send_file,
                    url_for)
-from epf import (battery, calibration, config, credentials, discovery, eventlog, imaging,
-                 immich, notify, state, tracking)
+from epf import (__version__, battery, calibration, config, credentials, discovery, eventlog,
+                 imaging, immich, notify, state, tracking)
 
 app = Flask(__name__)
 # Photos of the calibration card come straight from phones, a few MB each
@@ -32,6 +32,11 @@ CALIBRATION_MAX_PHOTOS = 6
 def inject_current_year():
     """ Expose the current year to every template, so the footer never goes stale """
     return {'current_year': datetime.now().year}
+
+@app.context_processor
+def inject_version():
+    """ Expose the server's release, shown in the footer """
+    return {'version': __version__}
 
 @app.context_processor
 def inject_static_url():
@@ -850,7 +855,10 @@ def main():
 
     try:
         config.apply(config.read_file())
-        eventlog.record('startup')
+        print(f"EPF server {__version__}", flush=True)
+        if immich.key_missing():
+            print(immich.key_missing_hint(), flush=True)
+        eventlog.record('startup', version=__version__)
         start_preparing()
 
         threading.Thread(target=run_daily_ntp_sync, daemon=True).start()
