@@ -16,8 +16,10 @@ CLAUDE.md
 README*.md
 Dockerfile
 docker-compose.yml
-__pycache__/
-*.py[cod]
+# At any depth: a pattern without **/ matches the top level only, and the
+# 1.3.0 image carried epf/__pycache__ from the working tree
+**/__pycache__/
+**/*.py[cod]
 
 # Firmware, enclosure and the web installer: never read by the server
 Arduino/

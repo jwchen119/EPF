@@ -227,9 +227,21 @@
                         <circle cx="16" cy="7" r="2.6" />
                         <circle cx="12" cy="17" r="2.6" />
                     </svg>
-                    <h2 class="card-title" data-i18n="card.enhance">Image Enhancement</h2>
+                    <h2 class="card-title" data-i18n="card.enhance">Image Processing</h2>
                 </div>
                 <div class="form-group">
+                    <label for="dither_mode" data-i18n="label.ditherMode">Dithering Method:</label>
+                    <select id="dither_mode" name="dither_mode" onchange="updateModeControls()">
+                        <option value="classic" data-i18n="dither.classic" {% if config['immich']['dither_mode']=='classic'
+                            %}selected{% endif %}>Classic</option>
+                        <option value="classic_cc" data-i18n="dither.classic_cc" {% if config['immich']['dither_mode']=='classic_cc'
+                            %}selected{% endif %}>Classic with colour correction</option>
+                    </select>
+                </div>
+
+                {# Each control lists, in data-modes, the methods that use it; the
+                   rest are hidden but still submitted, so their values are kept #}
+                <div class="form-group" data-modes="classic">
                     <label for="enhanced" data-i18n="label.enhanced">Color Enhancement:</label>
                     <div class="slider-container">
                         <input type="range" id="enhanced" name="enhanced" min="0.0" max="2.0" step="0.1"
@@ -238,7 +250,7 @@
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div class="form-group" data-modes="classic classic_cc">
                     <label for="contrast" data-i18n="label.contrast">Contrast:</label>
                     <div class="slider-container">
                         <input type="range" id="contrast" name="contrast" min="0.0" max="2.0" step="0.1"
@@ -247,13 +259,87 @@
                     </div>
                 </div>
 
-                <div class="form-group">
+                <div class="form-group" data-modes="classic classic_cc">
                     <label for="strength" data-i18n="label.strength">Dithering Strength:</label>
                     <div class="slider-container">
                         <input type="range" id="strength" name="strength" min="0.0" max="1.0" step="0.1"
                             value="{{ config['immich']['strength']|default('0.8') }}" oninput="updateSliderValue(this)">
                         <output class="slider-value">{{ config['immich']['strength']|default('0.8') }}</output>
                     </div>
+                </div>
+
+                <div class="form-group" data-modes="classic_cc">
+                    <label for="cc_strength" data-i18n="label.ccStrength">Colour correction:</label>
+                    <div class="slider-container">
+                        <input type="range" id="cc_strength" name="cc_strength" min="0" max="1" step="0.05"
+                            data-format="percent" value="{{ config['immich']['cc_strength'] }}"
+                            oninput="updateSliderValue(this)">
+                        <output class="slider-value"></output>
+                    </div>
+                    <p class="hint" data-i18n="hint.ccStrength">Below 100% the picture moves back towards
+                        Classic, including its colour enhancement.</p>
+                </div>
+
+                <div class="form-group" data-modes="classic_cc">
+                    <label for="cc_chroma" data-i18n="label.ccChroma">Colourfulness:</label>
+                    <div class="slider-container">
+                        <input type="range" id="cc_chroma" name="cc_chroma" min="0.5" max="1.5" step="0.05"
+                            data-format="percent" value="{{ config['immich']['cc_chroma'] }}"
+                            oninput="updateSliderValue(this)">
+                        <output class="slider-value"></output>
+                    </div>
+                </div>
+
+                <div class="form-group" data-modes="classic_cc">
+                    <label for="cc_warmth" data-i18n="label.ccWarmth">Cool &#8596; Warm:</label>
+                    <div class="slider-container">
+                        <input type="range" id="cc_warmth" name="cc_warmth" min="-10" max="10" step="1"
+                            data-format="signed" value="{{ config['immich']['cc_warmth'] }}"
+                            oninput="updateSliderValue(this)">
+                        <output class="slider-value"></output>
+                    </div>
+                </div>
+
+                <div class="form-group" data-modes="classic_cc">
+                    <label for="cc_tint" data-i18n="label.ccTint">Green &#8596; Magenta:</label>
+                    <div class="slider-container">
+                        <input type="range" id="cc_tint" name="cc_tint" min="-10" max="10" step="1"
+                            data-format="signed" value="{{ config['immich']['cc_tint'] }}"
+                            oninput="updateSliderValue(this)">
+                        <output class="slider-value"></output>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-head">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1.1-1.6-1.1-2.7 0-1 .8-1.6 1.8-1.6h2.1a3.9 3.9 0 0 0 3.9-3.9C20.5 6.6 16.7 3.5 12 3.5z" />
+                        <circle cx="7.8" cy="11" r="1.1" />
+                        <circle cx="10.5" cy="7.4" r="1.1" />
+                        <circle cx="15" cy="7.6" r="1.1" />
+                    </svg>
+                    <h2 class="card-title" data-i18n="card.colour">Panel Calibration</h2>
+                </div>
+                <p class="hint card-intro" data-i18n="hint.calibCard">Used by "Classic with colour correction";
+                    Classic does not use it.</p>
+
+                <div class="form-group">
+                    <p class="calib-state" id="calibState"></p>
+                    <div class="swatches" id="calibSwatches"></div>
+                    <div class="calib-actions">
+                        <button type="button" class="reset-btn" onclick="showCalibrationCard()"
+                            data-i18n="btn.showCard">Show the card</button>
+                        <button type="button" class="reset-btn" onclick="chooseCalibrationPhotos()"
+                            data-i18n="btn.calibrate">Upload photos</button>
+                        <button type="button" class="reset-btn" id="calibReset" onclick="resetCalibration()"
+                            data-i18n="btn.calibReset" hidden>Back to default</button>
+                    </div>
+                    <p class="hint" data-i18n="hint.calibration">Show the card on the frame, photograph the panel
+                        2-4 times from slightly different angles avoiding reflections, then upload the photos.</p>
+                    <input type="file" id="calibFiles" accept="image/*" multiple hidden
+                        onchange="startCalibration(this.files)">
                 </div>
             </div>
 
@@ -465,6 +551,41 @@
                 <button onclick="unbindChannel()" id="bindForget" class="reset-btn"
                     data-i18n="btn.bindForget" hidden>Unlink</button>
                 <button onclick="closeBinding()" class="reset-btn" data-i18n="btn.cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="calibModal" class="confirm-modal">
+        <div class="confirm-content calib-content">
+            <h2 id="calibTitle"></h2>
+            <div id="calibMark">
+                <p class="hint" data-i18n="calib.help">Tap the four corners of the coloured grid, in any order.
+                    Drag a marker to adjust it.</p>
+                <div class="calib-stage">
+                    <img id="calibImage" alt="" draggable="false">
+                    <svg id="calibOverlay" class="calib-overlay" aria-hidden="true"></svg>
+                </div>
+                <p class="bind-error" id="calibError" hidden></p>
+                <div class="confirm-actions">
+                    <button type="button" id="calibNext" onclick="nextCalibrationPhoto()" disabled>Next</button>
+                    <button type="button" class="reset-btn" onclick="clearCorners()"
+                        data-i18n="btn.clearCorners">Clear</button>
+                    <button type="button" class="reset-btn" onclick="closeCalibration()"
+                        data-i18n="btn.cancel">Cancel</button>
+                </div>
+            </div>
+            <div id="calibResult" hidden>
+                <div class="calib-compare" id="calibCompare"></div>
+                <p class="hint" id="calibFacts"></p>
+                <ul class="calib-photos" id="calibPhotos"></ul>
+                <div class="confirm-actions">
+                    <button type="button" id="calibApply" onclick="applyCalibration()"
+                        data-i18n="btn.apply">Apply</button>
+                    <button type="button" class="reset-btn" onclick="remarkCalibration()"
+                        data-i18n="btn.remark">Mark again</button>
+                    <button type="button" class="reset-btn" onclick="closeCalibration()"
+                        data-i18n="btn.cancel">Cancel</button>
+                </div>
             </div>
         </div>
     </div>

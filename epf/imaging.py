@@ -13,13 +13,14 @@ import numpy as np
 import rawpy
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps, UnidentifiedImageError
 from pillow_heif import register_heif_opener
-from cpy import convert_image, load_scaled
+
+from . import dither
 
 # So PIL can open the HEIC that iPhones produce
 register_heif_opener()
 
 # The panel's *measured* colours. Must stay in step with the pure-RGB palette
-# inside cpy.pyx:convert_image and the EPD_7IN3E_* codes in the firmware header.
+# in epf/dither.py (PURE) and the EPD_7IN3E_* codes in the firmware header.
 palette = [
     (0, 0, 0),
     (255, 255, 255),
@@ -29,9 +30,101 @@ palette = [
     (67, 138, 28),
 ]
 
+# This panel's colours, measured from photos of the calibration card
+# (2026-10-06, two cleanest of four shots, each colour relative to the panel's
+# own white so the phone's exposure and white balance cancel). Same order as
+# palette. Black includes the glass's glare, as seen in use.
+CALIBRATED_PALETTE = [
+    (84, 69, 78),
+    (255, 255, 255),
+    (255, 250, 58),
+    (166, 73, 69),
+    (92, 115, 193),
+    (111, 139, 107),
+]
+
 # Not currently consulted anywhere; /download branches on the asset's extension.
 ALLOWED_EXTENSIONS = {'.jpeg', '.raw', '.jpg', '.bmp', '.dng', '.heic', '.arw',
                       '.cr2', '.dng', '.nef', '.raw'}
+
+# The panel size; the dither and the firmware both assume it
+EPD_W = 800
+EPD_H = 480
+
+# The calibration card's 3x3 grid, rows top to bottom in the panel's own
+# orientation; a pair is a fine checkerboard of the two. epf/calibration.py
+# reads photos of the card with the same layout.
+CARD_LAYOUT = (('black', 'white', 'yellow'),
+               ('red', 'blue', 'green'),
+               (('black', 'white'), ('red', 'white'), ('yellow', 'blue')))
+
+def load_scaled(image, angle, display_mode='fit'):
+    """
+    Rotate, then letterbox ('fit') or centre-crop ('fill') to the panel size.
+    Moved here unchanged from the former cpy.pyx, where it was plain Python anyway.
+    """
+    img = image.copy()
+    img = img.convert('RGB')
+    img = img.rotate(angle, expand=True)
+
+    orig_ratio = img.width / img.height
+    epd_ratio = EPD_W / EPD_H
+    if display_mode == 'fill':
+        if orig_ratio > epd_ratio:
+            # Too wide: crop the sides
+            new_height = EPD_H
+            new_width = int(new_height * orig_ratio)
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            left = (new_width - EPD_W) // 2
+            img = img.crop((left, 0, left + EPD_W, EPD_H))
+        else:
+            # Too tall: crop top and bottom
+            new_width = EPD_W
+            new_height = int(new_width / orig_ratio)
+            img = img.resize((new_width, new_height), Image.LANCZOS)
+            top = (new_height - EPD_H) // 2
+            img = img.crop((0, top, EPD_W, top + EPD_H))
+        return img
+
+    if orig_ratio > epd_ratio:
+        new_width = EPD_W
+        new_height = int(new_width / orig_ratio)
+    else:
+        new_height = EPD_H
+        new_width = int(new_height * orig_ratio)
+    img = img.resize((new_width, new_height), Image.LANCZOS)
+    bg = Image.new('RGB', (EPD_W, EPD_H), (255, 255, 255))
+    bg.paste(img, ((EPD_W - new_width) // 2, (EPD_H - new_height) // 2))
+    return bg
+
+def calibration_card():
+    """
+    A 3x3 grid in the panel's own orientation, to photograph and measure what
+    the panel really shows:
+
+        black            white             yellow
+        red              blue              green
+        black/white 50%  red/white 50%     yellow/blue 50%
+
+    The bottom row is fine checkerboards; their measured colour, compared with
+    the mean of the two solid colours, shows how the dots mix to the eye.
+    Returned as an RGB array of the six pure colours, ready to pack.
+    """
+    pure = dict(zip(('black', 'white', 'yellow', 'red', 'blue', 'green'), dither.PURE8))
+    card = np.zeros((EPD_H, EPD_W, 3), dtype=np.uint8)
+    yy, xx = np.mgrid[0:EPD_H, 0:EPD_W]
+    checker = (yy + xx) % 2 == 0
+    for r, row in enumerate(CARD_LAYOUT):
+        for c, cell in enumerate(row):
+            y0, y1 = r * EPD_H // 3, (r + 1) * EPD_H // 3
+            x0, x1 = c * EPD_W // 3, (c + 1) * EPD_W // 3
+            if isinstance(cell, tuple):
+                a, b = (np.array(pure[name], dtype=np.uint8) for name in cell)
+                block = np.where(checker[y0:y1, x0:x1, None], a, b)
+            else:
+                block = np.array(pure[cell], dtype=np.uint8)
+            card[y0:y1, x0:x1] = block
+    return card
 
 def depalette_image(pixels, palette):
     palette_array = np.array(palette)
@@ -41,20 +134,25 @@ def depalette_image(pixels, palette):
     return indices
 
 def scale_img_in_memory(image, rotation=270, display_mode='fill', enhanced=1.0,
-                        contrast=1.0, strength=1.0,
-                        target_width=800, target_height=480, bg_color=(255, 255, 255)):
+                        contrast=1.0, strength=1.0, dither_mode='classic',
+                        target_width=800, target_height=480, bg_color=(255, 255, 255),
+                        panel_palette=None, dot_gain=None, correction=None):
     """
     Rotate, fit or crop to the panel, enhance, then dither. Returns a BytesIO BMP.
 
     target_width/target_height only affect the (currently disabled) date overlay;
-    the panel size itself is fixed inside cpy.
+    the panel size itself is fixed by EPD_W and EPD_H.
 
     :param image: PIL Image object
     :param rotation: rotation angle (0, 90, 180, 270)
     :param display_mode: 'fit' to letterbox, 'fill' to centre-crop
     :param enhanced: saturation, via PIL ImageEnhance.Color
     :param contrast: contrast, via PIL ImageEnhance.Contrast
-    :param strength: scales the Floyd-Steinberg error diffusion
+    :param strength: scales the Floyd-Steinberg error diffusion (classic only)
+    :param dither_mode: see epf/dither.py
+    :param panel_palette: the panel's colours, for every dither but classic
+    :param dot_gain: the panel's dot gain, default dither.DOT_GAIN
+    :param correction: classic_cc's adjustments, see dither.dither()
     :return: BytesIO object
     """
 
@@ -109,7 +207,9 @@ def scale_img_in_memory(image, rotation=270, display_mode='fill', enhanced=1.0,
     #     dither=Image.Dither.FLOYDSTEINBERG
     # ).convert("RGB")
 
-    output_img = convert_image(enhanced_img, dithering_strength=strength)
+    output_img = dither.dither(enhanced_img, dither_mode, strength,
+                               panel_palette or CALIBRATED_PALETTE,
+                               dither.DOT_GAIN if dot_gain is None else dot_gain, correction)
     output_img = Image.fromarray(output_img, mode="RGB")
 
     # Add date if available
@@ -229,22 +329,29 @@ def convert_to_c_code_in_memory(image_data):
 
     indices = depalette_image(pixels, palette)
 
-    # Two 4-bit indices per byte
-    height, width = indices.shape
-    bytes_array = [
-        (indices[y, x] << 4) | indices[y, x + 1] if x + 1 < width else (indices[y, x] << 4)
-        for y in range(height)
-        for x in range(0, width, 2)
-    ]
+    # Two 4-bit indices per byte; an odd last column gets a zero partner,
+    # as the old per-pixel loop did
+    indices = indices.astype(np.uint8)
+    if indices.shape[1] % 2:
+        indices = np.pad(indices, ((0, 0), (0, 1)))
+    packed = ((indices[:, 0::2] << 4) | indices[:, 1::2]).reshape(-1)
 
-    output = io.StringIO()
-    for i, byte_value in enumerate(bytes_array):
-        output.write(f"{byte_value:02X},")
-        if (i + 1) % 16 == 0:
-            output.write("\n")
-    output.write("};\n")
+    # "XX," per byte, 16 bytes to a line, then "};" - built as one byte array
+    # instead of 192,000 string writes (about 4 ms rather than 300+)
+    hex_digits = np.frombuffer(b'0123456789ABCDEF', dtype=np.uint8)
+    text = np.empty((packed.size, 3), dtype=np.uint8)
+    text[:, 0] = hex_digits[packed >> 4]
+    text[:, 1] = hex_digits[packed & 15]
+    text[:, 2] = ord(',')
+    text = text.reshape(-1)
+    full = (packed.size // 16) * 48
+    body = np.empty(full // 48 * 49, dtype=np.uint8)
+    lines = body.reshape(-1, 49)
+    lines[:, :48] = text[:full].reshape(-1, 48)
+    lines[:, 48] = ord('\n')
+    out = body.tobytes() + text[full:].tobytes() + b'};\n'
 
-    output_bytes = io.BytesIO(output.getvalue().encode('utf-8'))
+    output_bytes = io.BytesIO(out)
     output_bytes.seek(0)
     return output_bytes
 

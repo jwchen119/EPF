@@ -35,6 +35,14 @@ next_photo = {
     'rendered': None,
 }
 
+# Colour calibration: whether the next /download serves the calibration card
+# instead of a photo (POST /calibration/card, once), and the last measurement
+# from /calibration/measure, waiting for /calibration/apply
+calibration = {
+    'pending': False,
+    'measured': None,
+}
+
 # When the last low-battery warning went out. In memory, so a restart lets one
 # more through rather than needing another file on disk.
 notify = {

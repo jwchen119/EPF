@@ -989,6 +989,117 @@ footer {
     color: var(--ink-3);
 }
 
+/* ---------- panel colour ---------- */
+
+.card-intro {
+    margin: -0.6rem 0 1.2rem;
+}
+
+.calib-state {
+    font-size: 0.88rem;
+    color: var(--ink-2);
+}
+
+.swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.6rem 0 0.9rem;
+}
+
+.swatch {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 6px;
+    border: 1px solid var(--line-strong);
+}
+
+.calib-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.calib-content {
+    max-width: 44rem;
+    max-height: 94vh;
+    overflow-y: auto;
+    text-align: left;
+}
+
+.calib-content h2 {
+    text-align: left;
+}
+
+.calib-stage {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    margin: 0.4rem 0 1rem;
+}
+
+.calib-stage img {
+    display: block;
+    max-width: 100%;
+    max-height: 62vh;
+    border-radius: var(--radius-sm);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: crosshair;
+}
+
+.calib-overlay {
+    position: absolute;
+    pointer-events: none;
+}
+
+.calib-overlay polygon {
+    fill: rgba(207, 159, 52, 0.14);
+    stroke: var(--sun);
+    stroke-width: 2;
+}
+
+.calib-overlay circle {
+    fill: rgba(255, 255, 255, 0.3);
+    stroke: var(--sun);
+    stroke-width: 2.5;
+}
+
+.calib-compare {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+    gap: 0.8rem;
+    margin: 0.4rem 0 0.8rem;
+    font-size: 0.85rem;
+    color: var(--ink-2);
+}
+
+.calib-pair {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.calib-photos {
+    list-style: none;
+    font-size: 0.85rem;
+    color: var(--ink-2);
+    margin-bottom: 1.2rem;
+    overflow-wrap: anywhere;
+}
+
+.calib-used {
+    color: var(--moss);
+    font-weight: 600;
+}
+
+.calib-problem {
+    color: var(--clay);
+    font-weight: 600;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 640px) {

@@ -1,6 +1,11 @@
 Flask==3.1.0
 requests==2.32.3
+# The CA list requests trusts (Immich over HTTPS, Telegram, LINE); 2026.10.23
+# rejects the eMudhra intermediates compromised in October 2026
+certifi==2026.10.23
 numpy==2.0.2
+# Compiles the dithering (epf/dither.py); 0.60 runs on Python 3.9-3.12 with NumPy 2.0
+numba==0.60.0
 pillow==11.0.0
 pillow_heif==0.21.0
 PyYAML==6.0.2

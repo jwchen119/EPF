@@ -1,4 +1,12 @@
-FROM python:3.9-slim
+# Python 3.9 reached end of life in October 2025 and its image is no longer
+# rebuilt; the Cython module that tied the server to it is gone (epf/dither.py)
+FROM python:3.12-slim
+
+# Security updates the base image may not carry yet, above all the list of
+# trusted certificate authorities (ca-certificates): until it was updated, the
+# system store still trusted the eMudhra intermediates compromised in October 2026
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app

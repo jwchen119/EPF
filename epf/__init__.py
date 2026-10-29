@@ -7,6 +7,8 @@ Server-side pieces of the e-paper photo frame.
   tracking  which photos have already been shown
   immich    talking to Immich, and choosing which photo comes next
   imaging   crop, enhance, dither and pack for the panel
+  dither    the dithering algorithms, compiled with Numba
+  calibration  the panel's measured colours, from photos of the calibration card
   battery   voltage to percentage
   discovery announcing the server on the local network (mDNS), for frames to find
 

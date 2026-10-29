@@ -356,6 +356,31 @@ uint8_t WifiCaptive::waitForConnectResult(uint32_t timeout)
         return WiFi.waitForConnectResult();
     }
 
+    if (!_eventsHooked)
+    {
+        WiFi.onEvent([this](arduino_event_id_t event, arduino_event_info_t info)
+                     {
+            if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED)
+            {
+                _apMissedScans = 0;
+            }
+            else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+            {
+                // 201 WIFI_REASON_NO_AP_FOUND; 210-212 its variants (with
+                // compatible security, in the auth mode or RSSI threshold),
+                // as numbers because older ESP-IDF headers lack those names
+                uint8_t reason = info.wifi_sta_disconnected.reason;
+                if ((reason == 201 || (reason >= 210 && reason <= 212)) && _apMissedScans < 255)
+                {
+                    _apMissedScans++;
+                }
+            } });
+        _eventsHooked = true;
+    }
+    // The driver needs a scan (~2.5 s) to report a missing network, so a count
+    // left over from an earlier attempt can be cleared here
+    _apMissedScans = 0;
+
     unsigned long timeoutmillis = millis() + timeout;
     uint8_t status = WiFi.status();
 
@@ -368,6 +393,12 @@ uint8_t WifiCaptive::waitForConnectResult(uint32_t timeout)
         status = WiFi.status();
         // @todo detect additional states, connect happens, then dhcp then get ip, there is some delay here, make sure not to timeout if waiting on IP
         if (status == WL_CONNECTED || status == WL_CONNECT_FAILED)
+        {
+            return status;
+        }
+        // A network that is not there: waiting the whole timeout for it cost
+        // 15 s per attempt, three attempts per saved network
+        if (_apMissedScans >= NO_AP_SCANS)
         {
             return status;
         }

@@ -28,6 +28,14 @@ DEFAULT_CONFIG = {
         'strength': 0.8,                # From 0.0 .. 1.0
         'display_mode': 'fill',         # fit/fill
         'image_order': 'random',        # random/newest
+        'dither_mode': 'classic',       # classic/classic_cc, see epf/dither.py
+        # Fine-tuning for classic_cc, see epf/dither.py: the share of the colour
+        # correction applied, a chroma multiplier, and CIELAB offsets towards
+        # warm (b*) and magenta (a*)
+        'cc_strength': 1.0,             # 0.0 .. 1.0
+        'cc_chroma': 1.0,               # 0.5 .. 1.5
+        'cc_warmth': 0.0,               # -10 .. 10
+        'cc_tint': 0.0,                 # -10 .. 10
         'sleep_start_hour': 23,         # Sleep start time 23:00 (11:00 PM)
         'sleep_start_minute': 0,
         'sleep_end_hour': 6,            # Sleep end time 6:00 (6:00 AM)
