@@ -31,6 +31,8 @@ classic_cc
 Numba compiles each function on first use (about a second) and caches the
 machine code in __pycache__, so later processes start quickly.
 """
+import threading
+
 import numpy as np
 from numba import njit
 
@@ -62,9 +64,15 @@ CC_STAY = 0.01
 # classic_cc's adjustments when none are given: the whole correction, chroma
 # as in the photo, no shift in warmth or tint
 CC_NEUTRAL = {'strength': 1.0, 'chroma': 1.0, 'warmth': 0.0, 'tint': 0.0}
-# Tables kept, newest last; moving a slider back and forth reuses them
+# Tables kept, most recently used last; moving a slider back and forth reuses them
 CC_TABLES_KEPT = 4
 _cc_tables = {}
+# One build at a time: the thread preparing the next photo and a /download
+# would otherwise build the same table side by side
+_cc_lock = threading.Lock()
+# Grid patches measured per pass: the whole 17^3 grid at once took over a
+# gigabyte of float arrays, this many about 60 MB
+CC_CHUNK = 256
 
 
 @njit(cache=True)
@@ -206,8 +214,19 @@ def _classic_table(strength, measured_palette, dot_gain, chroma, warmth, tint):
     key = (round(float(strength), 3), tuple(tuple(int(v) for v in c) for c in measured_palette),
            round(float(dot_gain), 4), round(float(chroma), 3), round(float(warmth), 2),
            round(float(tint), 2))
-    if key in _cc_tables:
-        return _cc_tables[key]
+    with _cc_lock:
+        if key in _cc_tables:
+            _cc_tables[key] = _cc_tables.pop(key)  # now the most recently used
+            return _cc_tables[key]
+        table = _build_classic_table(strength, measured_palette, dot_gain, chroma, warmth, tint)
+        while len(_cc_tables) >= CC_TABLES_KEPT:
+            _cc_tables.pop(next(iter(_cc_tables)))
+        _cc_tables[key] = table
+        return table
+
+
+def _build_classic_table(strength, measured_palette, dot_gain, chroma, warmth, tint):
+    """ Build the classic_cc correction table; see _classic_table """
     pal_lin = _to_linear(np.asarray(measured_palette, dtype=np.float64) / 255.0)
     levels = np.linspace(0, 255, CC_GRID)
     grid = np.stack(np.meshgrid(levels, levels, levels, indexing='ij'), -1).reshape(-1, 3)
@@ -219,7 +238,9 @@ def _classic_table(strength, measured_palette, dot_gain, chroma, warmth, tint):
     for k, colour in enumerate(grid):
         patch[:] = np.round(colour).astype(np.int64)
         idx[k] = _classic(patch, PURE, float(strength))
-    shown = _lab(_panel_mean(idx, pal_lin, float(dot_gain), 6)).reshape(CC_GRID, CC_GRID, CC_GRID, 3)
+    mean = np.concatenate([_panel_mean(idx[i:i + CC_CHUNK], pal_lin, float(dot_gain), 6)
+                           for i in range(0, len(idx), CC_CHUNK)])
+    shown = _lab(mean).reshape(CC_GRID, CC_GRID, CC_GRID, 3)
 
     # wanted: classic's own lightness, the colour's hue and chroma measured
     # from the grey classic shows at that lightness, then the adjustments
@@ -245,11 +266,7 @@ def _classic_table(strength, measured_palette, dot_gain, chroma, warmth, tint):
         rhs = (jt @ err[..., None])[..., 0] - CC_STAY * (c - grid)
         step = np.linalg.solve(jt @ jac + (CC_STAY + 0.05) * np.eye(3), rhs[..., None])[..., 0]
         c = np.clip(c + np.clip(step, -24, 24), 0, 255)
-    table = _smooth_table(c.reshape(CC_GRID, CC_GRID, CC_GRID, 3))
-    while len(_cc_tables) >= CC_TABLES_KEPT:
-        _cc_tables.pop(next(iter(_cc_tables)))
-    _cc_tables[key] = table
-    return table
+    return _smooth_table(c.reshape(CC_GRID, CC_GRID, CC_GRID, 3))
 
 
 def _blur(a, sigma):

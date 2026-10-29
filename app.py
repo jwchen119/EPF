@@ -8,6 +8,7 @@ page. Run with `python app.py`, or `docker compose up -d`.
 """
 import io
 import json
+import math
 import os
 import socket
 import threading
@@ -137,6 +138,9 @@ def settings():
             try:
                 submitted[section][key] = number[key](raw) if key in number else raw
             except (TypeError, ValueError):
+                return render(error=f"'{key}' is not a valid number")
+            # float() also reads 'nan' and 'inf', which no comparison catches
+            if key in number and not math.isfinite(submitted[section][key]):
                 return render(error=f"'{key}' is not a valid number")
 
     if submitted['immich']['rotation'] not in [0, 90, 180, 270]:
@@ -373,6 +377,20 @@ CC_RANGES = {'cc_strength': (0.0, 1.0), 'cc_chroma': (0.5, 1.5),
 # See epf/dither.py: classic, and classic with the colour-correction table
 DITHER_MODES = ('classic', 'classic_cc')
 
+def cc_setting(settings, key):
+    """
+    One of classic_cc's settings, within CC_RANGES. config.yaml may be edited
+    by hand, so a missing or unreadable value is the default.
+    """
+    low, high = CC_RANGES[key]
+    try:
+        value = float(settings[key])
+    except (KeyError, TypeError, ValueError):
+        value = config.DEFAULT_CONFIG['immich'][key]
+    if not math.isfinite(value):
+        value = config.DEFAULT_CONFIG['immich'][key]
+    return min(max(value, low), high)
+
 def next_dither():
     """ The dither the next render uses; an unknown one (a removed method) is classic """
     mode = config.immich().get('dither_mode', 'classic')
@@ -435,10 +453,11 @@ def render_asset(selected, dither_mode='classic'):
         # The correction table looks after colour, so classic's saturation
         # boost fades out as the correction comes in: at 0% this is classic.
         # Contrast and strength apply as set.
-        share = settings_now['cc_strength']
+        share = cc_setting(settings_now, 'cc_strength')
         settings_now['enhanced'] = 1.0 + (1.0 - share) * (settings_now['enhanced'] - 1.0)
-        correction = {'strength': share, 'chroma': settings_now['cc_chroma'],
-                      'warmth': settings_now['cc_warmth'], 'tint': settings_now['cc_tint']}
+        correction = {'strength': share, 'chroma': cc_setting(settings_now, 'cc_chroma'),
+                      'warmth': cc_setting(settings_now, 'cc_warmth'),
+                      'tint': cc_setting(settings_now, 'cc_tint')}
     processed = imaging.scale_img_in_memory(
         image,
         rotation=settings_now['rotation'],
@@ -600,6 +619,8 @@ def process_and_download():
                         battery_pct=battery.percentage(reported_mv) if reported_mv else None,
                         uptime_ms=_int_header('X-Uptime-Ms'), wake=request.headers.get('X-Wake'),
                         dither='calibration')
+        if reported_mv:
+            notify.check_battery(battery.percentage(reported_mv), reported_mv)
         return send_file(card, mimetype='text/plain', as_attachment=True,
                          download_name='calibration.c')
 

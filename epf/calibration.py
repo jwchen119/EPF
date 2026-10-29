@@ -23,6 +23,7 @@ measured on the panel this was developed with are used.
 """
 import io
 import json
+import math
 import os
 import threading
 from datetime import datetime
@@ -90,6 +91,8 @@ def current():
     try:
         palette = [[int(value) for value in colour] for colour in stored['palette']]
         dot_gain = float(stored['dot_gain'])
+        if not math.isfinite(dot_gain):
+            raise ValueError('dot_gain')
         if len(palette) != len(NAMES) or any(
                 len(colour) != 3 or not all(0 <= value <= 255 for value in colour) for colour in palette):
             raise ValueError('palette')
@@ -100,8 +103,13 @@ def current():
             'photos_used': stored.get('photos_used', 0), 'default': False}
 
 def version():
-    """ Changes whenever the calibration does, to tell that a prepared image is stale """
-    return current()['measured_at'] or 'default'
+    """
+    Changes whenever the calibration in use does, to tell that a prepared image
+    is stale: the values themselves, so that a hand edit of calibration.json
+    that keeps measured_at counts too
+    """
+    measured = current()
+    return json.dumps([measured['palette'], measured['dot_gain']])
 
 def save(result):
     """ Keep a measurement from measure() as the calibration in use """
@@ -136,16 +144,21 @@ def open_photo(data):
     image = ImageOps.exif_transpose(image).convert('RGB')
     if profile:
         try:
-            image = ImageCms.profileToProfile(image, ImageCms.ImageCmsProfile(io.BytesIO(profile)),
-                                              _SRGB, outputMode='RGB')
+            ImageCms.profileToProfile(image, ImageCms.ImageCmsProfile(io.BytesIO(profile)),
+                                      _SRGB, outputMode='RGB', inPlace=True)
         except (ImageCms.PyCMSError, OSError, ValueError) as error:
             print(f"Colour profile not applied, reading the photo as sRGB: {error}")
-    lin = _TO_LINEAR[np.asarray(image)]
-    step = max(1, -(-max(lin.shape[:2]) // MAX_SIDE))
-    if step > 1:
-        h, w = lin.shape[0] // step * step, lin.shape[1] // step * step
-        lin = lin[:h, :w].reshape(h // step, step, w // step, step, 3).mean(axis=(1, 3))
-    return lin
+    pixels = np.asarray(image)
+    step = max(1, -(-max(pixels.shape[:2]) // MAX_SIDE))
+    if step == 1:
+        return _TO_LINEAR[pixels]
+    # A band of rows at a time: the whole photo in float32 is four times its
+    # decoded size, 580 MB for a 48 MP one
+    h, w = pixels.shape[0] // step * step, pixels.shape[1] // step * step
+    band = step * max(1, 64 // step)
+    return np.concatenate([
+        _TO_LINEAR[pixels[y:min(y + band, h), :w]].reshape(-1, step, w // step, step, 3).mean(axis=(1, 3))
+        for y in range(0, h, band)])
 
 def _homography(src, dst):
     """ The 3x3 projective map taking four points src to dst """

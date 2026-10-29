@@ -110,8 +110,7 @@ def calibration_card():
     the mean of the two solid colours, shows how the dots mix to the eye.
     Returned as an RGB array of the six pure colours, ready to pack.
     """
-    pure = {'black': (0, 0, 0), 'white': (255, 255, 255), 'yellow': (255, 255, 0),
-            'red': (255, 0, 0), 'blue': (0, 0, 255), 'green': (0, 255, 0)}
+    pure = dict(zip(('black', 'white', 'yellow', 'red', 'blue', 'green'), dither.PURE8))
     card = np.zeros((EPD_H, EPD_W, 3), dtype=np.uint8)
     yy, xx = np.mgrid[0:EPD_H, 0:EPD_W]
     checker = (yy + xx) % 2 == 0

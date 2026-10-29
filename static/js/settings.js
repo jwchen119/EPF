@@ -1028,6 +1028,8 @@ function confirmReset() {
         sliderElement.value = DEFAULT_SETTINGS[id];
         updateSliderValue(sliderElement);
     });
+    // dither_mode was reset above; show the sliders of the method it is now
+    updateModeControls();
 
     showNotification(t('notify.reset'));
     document.getElementById('confirmModal').style.display = 'none';
