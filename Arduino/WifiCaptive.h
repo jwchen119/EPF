@@ -29,9 +29,11 @@
 #define WIFI_CONNECTION_ATTEMPTS 3
 // Define max connection timeout
 #define CONNECTION_TIMEOUT 15000
-// How long an attempt goes on once the driver has reported the network not
-// found (it does so every ~2.5 s), instead of the whole CONNECTION_TIMEOUT
-#define NO_AP_TIMEOUT 5000
+// An attempt ends once the driver has looked for the network this many times
+// without finding it (each scan takes ~2.5 s, so about 5 s), instead of after
+// the whole CONNECTION_TIMEOUT. Decided right after a scan has failed, so it
+// never cuts off a connection that a scan has just found.
+#define NO_AP_SCANS 2
 // How long the portal stays up after connecting, so the page can read the outcome
 #define RESULT_LINGER_MS 3000
 // Local IP URL
@@ -71,9 +73,9 @@ private:
     // Called with the outcome of each connection attempt the portal makes
     std::function<void(bool connected)> _connectResultCallback;
     bool _portalRunning = false;
-    // Set when the driver reports the network not found, cleared when it
-    // associates; lets waitForConnectResult() give up after NO_AP_TIMEOUT
-    volatile bool _apMissing = false;
+    // Scans in this attempt that did not find the network, reset when it
+    // associates; lets waitForConnectResult() give up after NO_AP_SCANS
+    volatile uint8_t _apMissedScans = 0;
     bool _eventsHooked = false;
     // How the last connection attempt went, polled by the page (/result);
     // written by the portal loop, read by the web server's task
