@@ -14,9 +14,12 @@ WORKDIR /app
 # Copy project files
 COPY . /app/
 
-# Install Python dependencies
+# Install Python dependencies, with pip brought up to date first: the base
+# image still ships pip 25.0.1, which has published flaws in how it unpacks
+# packages (fixed by 26.2)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Exposed Flask port
 EXPOSE 5000

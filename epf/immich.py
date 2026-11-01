@@ -14,14 +14,31 @@ import requests
 from . import config, state, tracking
 
 # Read once at import, like the original: changing the key means a restart.
-# Note the README's docker run example spells it IMMICH-API-KEY, which is not
-# what this reads.
 apikey = os.getenv('IMMICH_API_KEY')
+# What the Dockerfile sets, so that container UIs list the variable
+PLACEHOLDER_KEY = 'your-api-key'
 
 headers = {
     'Accept': 'application/json',
     'x-api-key': apikey,
 }
+
+def key_missing():
+    """
+    True when no real key was given. Immich then answers 401, which on its own
+    reads like a wrong key rather than a variable that never reached the server.
+    """
+    return not apikey or apikey == PLACEHOLDER_KEY
+
+def key_missing_hint():
+    """ What to tell the person running the container when key_missing() """
+    hint = "IMMICH_API_KEY is not set: Immich will refuse every request."
+    # The README once spelled it with hyphens (issue #6), and a container set up
+    # from that still carries both: the hyphenated one, ignored, and the
+    # Dockerfile's placeholder
+    if os.getenv('IMMICH-API-KEY'):
+        hint += " The container has IMMICH-API-KEY, with hyphens, which is not read; rename it."
+    return hint
 
 class ImmichError(Exception):
     """ Carries the message and HTTP status the caller should report """
@@ -72,6 +89,8 @@ def resolve_album_id():
     """ Look up the configured album, raising ImmichError if it cannot be used """
     response = _call('GET', f"{base_url()}/api/albums")
     if response.status_code != 200:
+        if response.status_code == 401 and key_missing():
+            raise ImmichError(key_missing_hint(), 502)
         raise ImmichError(f"Failed to fetch albums (Immich returned {response.status_code})", 502)
 
     wanted = album_name()
@@ -167,6 +186,8 @@ def check_health():
     """
     if not base_url() or not album_name():
         return {'state': 'error', 'code': 'not_configured'}
+    if key_missing():
+        return {'state': 'error', 'code': 'no_key'}
 
     try:
         response = requests.get(f"{base_url()}/api/albums", headers=headers, timeout=6)

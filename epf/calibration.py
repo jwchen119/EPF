@@ -139,7 +139,8 @@ def open_photo(data):
     MAX_SIDE pixels. Averaging has to happen in linear light: a checkerboard
     the camera resolved would otherwise come out too dark.
     """
-    image = Image.open(io.BytesIO(data))
+    # Anyone on the LAN can upload, so only the formats a phone saves are decoded
+    image = Image.open(io.BytesIO(data), formats=imaging.PHOTO_FORMATS)
     profile = image.info.get('icc_profile')
     image = ImageOps.exif_transpose(image).convert('RGB')
     if profile:

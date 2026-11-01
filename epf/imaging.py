@@ -371,15 +371,24 @@ def _open_raw(data):
     with rawpy.imread(data) as raw:
         return Image.fromarray(raw.postprocess(use_camera_wb=True, use_auto_wb=False))
 
+# The formats PIL decodes: those photos come in (JPEG covers the cameras' MPO,
+# a JPEG with a second picture inside, which PIL opens through the JPEG
+# decoder). Without the list Image.open tries every decoder PIL has, and most
+# of its published flaws were in rarely used ones (PSD, FITS, TIFF, PDF...); a
+# file in any other format, AVIF and JPEG XL included, is shown from Immich's
+# preview, which is larger than the panel anyway.
+PHOTO_FORMATS = ('JPEG', 'PNG', 'WEBP', 'HEIF')
+PREVIEW_FORMATS = ('JPEG', 'WEBP')
+
 def open_asset(data, original_path):
     """ A PIL image from downloaded bytes, decoding RAW and HEIC as needed """
     lowered = (original_path or '').lower()
     if lowered.endswith(RAW_SUFFIXES):
         return _open_raw(data)
     if lowered.endswith('.heic'):
-        return Image.open(data).convert("RGB")
+        return Image.open(data, formats=PHOTO_FORMATS).convert("RGB")
     try:
-        image = Image.open(data)
+        image = Image.open(data, formats=PHOTO_FORMATS)
     except UnidentifiedImageError:
         # PIL reports the BytesIO object rather than the file, which says nothing
         # about what went wrong. The usual cause is a RAW file from a camera not
@@ -398,7 +407,7 @@ def open_asset(data, original_path):
 
 def open_preview(data):
     """ A PIL image from Immich's preview rendering, which is always JPEG or WebP """
-    image = Image.open(data)
+    image = Image.open(data, formats=PREVIEW_FORMATS)
     image.load()
     return image
 

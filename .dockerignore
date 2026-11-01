@@ -16,6 +16,8 @@ CLAUDE.md
 README*.md
 Dockerfile
 docker-compose.yml
+# Mounted into the image to run, see tests/test_render.py
+tests/
 # At any depth: a pattern without **/ matches the top level only, and the
 # 1.3.0 image carried epf/__pycache__ from the working tree
 **/__pycache__/
