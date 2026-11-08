@@ -5,7 +5,8 @@ Renders fixed, generated images through the pipeline and compares a hash of
 the packed panel data with the one recorded below, so that an upgrade of
 Pillow, NumPy or Numba cannot change the picture on the panel unnoticed. The
 classic hashes are those of the former Cython module, which epf/dither.py
-reproduces byte for byte. Also checks which file formats are decoded at all.
+reproduces byte for byte. Also checks which file formats are decoded at all,
+and which generated photos of the calibration card the measurement accepts.
 
 The dependencies are in the image, not on the host, so run it there:
 
@@ -24,7 +25,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from epf import calibration, imaging  # noqa: E402
+from epf import calibration, dither, imaging  # noqa: E402
 
 
 def _sha(data):
@@ -48,6 +49,21 @@ def _encoded(image, fmt, **options):
     out = io.BytesIO()
     image.save(out, fmt, **options)
     return out.getvalue()
+
+
+def _card_photo(palette, exposure=0.5):
+    """
+    A photo of the calibration card on a panel that shows `palette` (sRGB,
+    relative to its own white), exposed so that white is `exposure` in linear
+    light: every panel pixel 2x2 photo pixels, as PNG so nothing is lost
+    """
+    card = imaging.calibration_card().astype(np.int64)
+    pure = dither.PURE8.astype(np.int64)
+    index = np.argmin(((card[:, :, None] - pure[None, None]) ** 2).sum(-1), -1)
+    linear = dither._to_linear(np.asarray(palette, dtype=np.float64) / 255.0) * exposure
+    pixels = calibration._to_srgb8(linear).astype(np.uint8)[index]
+    image = Image.fromarray(pixels).resize((imaging.EPD_W * 2, imaging.EPD_H * 2), Image.NEAREST)
+    return _encoded(image, 'PNG')
 
 
 # (photo, rotation, display mode, saturation, contrast, strength) -> packed data
@@ -133,6 +149,48 @@ class Formats(unittest.TestCase):
                 calibration.open_photo(_encoded(self.photo, fmt))
         with self.assertRaises(Exception):
             calibration.open_photo(_encoded(self.photo, 'TIFF'))
+
+
+class Calibration(unittest.TestCase):
+    """ The measurement, on generated photos of a panel showing a given palette """
+
+    WHOLE = [[0, 0], [1, 0], [1, 1], [0, 1]]
+
+    def measure(self, palette, corners=WHOLE):
+        return calibration.measure([('card', _card_photo(palette), corners)])
+
+    def test_default_panel(self):
+        result = self.measure(imaging.CALIBRATED_PALETTE)
+        self.assertTrue(result['usable'], result['photos'])
+        np.testing.assert_allclose(result['palette'], imaging.CALIBRATED_PALETTE, atol=2)
+
+    def test_vivid_panel(self):
+        # What sound photos of another panel and phone measured, refused up to
+        # 1.4.1 because the red is 51 (CIELAB) from the default's
+        vivid = [(82, 50, 69), (255, 255, 255), (255, 242, 53), (243, 27, 25), (49, 124, 243),
+                 (134, 169, 132)]
+        result = self.measure(vivid)
+        self.assertTrue(result['usable'], result['photos'])
+        np.testing.assert_allclose(result['palette'], vivid, atol=2)
+
+    def test_misread_colour(self):
+        # A reflection over the whole red cell: it reads as a light grey
+        palette = list(imaging.CALIBRATED_PALETTE)
+        palette[3] = (200, 200, 200)
+        result = self.measure(palette)
+        self.assertFalse(result['usable'])
+        self.assertIn('unexpected', result['photos'][0]['problems'])
+
+    def test_corners_off_the_card(self):
+        for corners, problem in (
+                # The mean difference gives it away
+                ([[0, 0], [0.5, 0], [0.5, 1], [0, 1]], 'unrecognised'),
+                # The mean stays low (16.9) and only the misread colours do
+                ([[0, 0], [1, 0], [1, 2 / 3], [0, 2 / 3]], 'unexpected')):
+            with self.subTest(corners=corners):
+                result = self.measure(imaging.CALIBRATED_PALETTE, corners)
+                self.assertFalse(result['usable'])
+                self.assertIn(problem, result['photos'][0]['problems'])
 
 
 if __name__ == '__main__':
