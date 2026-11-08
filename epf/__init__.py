@@ -18,4 +18,4 @@ app.py holds the Flask app and the HTTP routes.
 # The server's release, shown on the settings page and recorded at start-up:
 # the one way to tell which image a container runs. Bump it with every image
 # pushed, as FW_VERSION in Arduino/config.h is bumped with every firmware.
-__version__ = '1.4.1'
+__version__ = '1.4.2'

@@ -52,14 +52,17 @@ SAMPLES = 24    # per cell and axis
 # varies by more than GLARE of the white's brightness has a reflection on it;
 # when even the best of the eight placements of the card is further than
 # UNRECOGNISED (mean CIELAB difference from the default palette) the corners
-# are not on the card, and a single colour further than UNEXPECTED is not
-# something a panel shows; a photo further than OUTLIER from the others'
-# median is left out
+# are not on the card, and a colour nearer another colour of the default
+# palette than its own was misread (a reflection over a whole cell, for
+# example); a photo further than OUTLIER from the others' median is left out.
+# How far one colour may be from the default is deliberately not limited, as
+# panels and phones differ more than any bound taken from one panel allows:
+# sound photos of another panel measured its red at (243, 27, 25), CIELAB
+# difference 51 from the default's (166, 73, 69)
 CLIPPED = 0.97
 DARK = 0.03
 GLARE = 0.12
 UNRECOGNISED = 25.0
-UNEXPECTED = 30.0
 OUTLIER = 8.0
 DOT_GAIN_RANGE = (0.03, 0.25)
 # A photo with any of these is not used at all
@@ -260,12 +263,12 @@ def _read_photo(lin, corners):
             solids = dither._lab(np.array([rel[name] for name in NAMES]))
             differences = np.sqrt(((solids - expected) ** 2).sum(axis=1))
             if best is None or differences.mean() < best[0]:
-                best = (differences.mean(), differences, cells, rel)
+                best = (differences.mean(), solids, cells, rel)
     if best is None:
         report['problems'].append('corners')
         return report
 
-    fit, differences, cells, rel = best
+    fit, solids, cells, rel = best
     white = cells['white'][0]
     white_level = float(white @ [0.2126, 0.7152, 0.0722])
     glare = max(cells[name][1] for name in NAMES) / max(white_level, 1e-6)
@@ -278,8 +281,10 @@ def _read_photo(lin, corners):
     })
     if fit > UNRECOGNISED:
         report['problems'].append('unrecognised')
-    elif differences.max() > UNEXPECTED:
-        report['problems'].append('unexpected')
+    else:
+        nearest = np.sqrt(((solids[:, None] - expected[None]) ** 2).sum(axis=-1)).argmin(axis=1)
+        if (nearest != np.arange(len(NAMES))).any():
+            report['problems'].append('unexpected')
     if white.max() > CLIPPED:
         report['problems'].append('overexposed')
     if white_level < DARK:

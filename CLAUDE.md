@@ -10,7 +10,7 @@ An e-paper photo frame split across two codebases that talk over HTTP:
 - **Firmware** (`Arduino/`) — an ESP32-C6 sketch (`epd7in3e.ino`) for a Waveshare 7.3" Spectra 6 (E6) panel, 800x480. It does no image processing: it streams bytes straight into the panel and goes back into deep sleep.
 - **CAD** (`CAD/*.STEP`) — enclosure parts, not built by any toolchain here.
 
-There is no linter config and no build system for the Python side. `tests/test_render.py` is a regression check of what the frame is sent: fixed, generated images through the pipeline, compared by hash with values recorded from earlier releases (the classic ones from the former Cython module), plus which file formats are decoded at all. The dependencies live in the image, so it runs there: `docker run --rm -v "$PWD/tests:/app/tests" <image> python -m unittest discover -s tests -v` (`.dockerignore` keeps `tests/` out of the image). Run it on every image before pushing; a hash changed on purpose is updated in the same commit, saying why.
+There is no linter config and no build system for the Python side. `tests/test_render.py` is a regression check of what the frame is sent: fixed, generated images through the pipeline, compared by hash with values recorded from earlier releases (the classic ones from the former Cython module), plus which file formats are decoded at all and which generated photos of the calibration card the measurement accepts. The dependencies live in the image, so it runs there: `docker run --rm -v "$PWD/tests:/app/tests" <image> python -m unittest discover -s tests -v` (`.dockerignore` keeps `tests/` out of the image). Run it on every image before pushing; a hash changed on purpose is updated in the same commit, saying why.
 
 ## Server: build and run
 
